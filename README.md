@@ -19,15 +19,14 @@ A music tracker for the terminal, built with Rust.
 - [x] BPM control
 - [x] Pattern length control
 - [x] Transpose control
-- [ ] Allow more channels
+- [ ] More sensible default settings
 - [ ] Stable audio playback
-- [ ] Instrument editing
+- [ ] Instrument/Synth editing
 - [ ] Effects channels
 - [ ] Patterns
 - [ ] Keybinding settings
 - [ ] Save/load from file
 - [ ] Sampler channel
-
 
 ## Install
 

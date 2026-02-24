@@ -66,14 +66,14 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         Self {
-            pattern: Pattern::new(4, 16),
+            pattern: Pattern::new(8, 16),
             cursor_channel: 0,
             cursor_row: 0,
             octave: 4,
             mode: Mode::Edit,
             playing: false,
             playback_row: 0,
-            bpm: 150,
+            bpm: 120,
             running: true,
             audio: AudioEngine::new(),
             settings_field: SettingsField::Bpm,

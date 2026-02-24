@@ -6,6 +6,7 @@ use rodio::Source;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Waveform {
     Sine,
+    Triangle,
     Square,
     Saw,
     Noise,
@@ -15,6 +16,7 @@ impl Waveform {
     pub fn name(&self) -> &'static str {
         match self {
             Waveform::Sine => "SIN",
+            Waveform::Triangle => "TRI",
             Waveform::Square => "SQR",
             Waveform::Saw => "SAW",
             Waveform::Noise => "NOS",
@@ -24,6 +26,7 @@ impl Waveform {
     fn sample(&self, phase: f32) -> f32 {
         match self {
             Waveform::Sine => (std::f32::consts::TAU * phase).sin(),
+            Waveform::Triangle => 4.0 * (phase - (phase + 0.5).floor()).abs() - 1.0,
             Waveform::Square => {
                 if phase < 0.5 {
                     1.0
@@ -41,7 +44,13 @@ impl Waveform {
             Waveform::Sine => Envelope {
                 attack: 0.01,
                 decay: 0.05,
-                sustain: 0.7,
+                sustain: 0.9,
+                release: 0.05,
+            },
+            Waveform::Triangle => Envelope {
+                attack: 0.01,
+                decay: 0.06,
+                sustain: 0.9,
                 release: 0.05,
             },
             Waveform::Square => Envelope {
@@ -66,10 +75,14 @@ impl Waveform {
     }
 }
 
-pub const CHANNEL_INSTRUMENTS: [Waveform; 4] = [
+pub const CHANNEL_INSTRUMENTS: [Waveform; 8] = [
     Waveform::Sine,
+    Waveform::Triangle,
+    Waveform::Square,
     Waveform::Square,
     Waveform::Saw,
+    Waveform::Saw,
+    Waveform::Noise,
     Waveform::Noise,
 ];
 
@@ -111,6 +124,7 @@ pub struct SynthSource {
     total_samples: u32,
     note_duration: f32,
     amplitude: f32,
+    noise_held: f32,
 }
 
 impl SynthSource {
@@ -128,6 +142,7 @@ impl SynthSource {
             total_samples,
             note_duration,
             amplitude,
+            noise_held: fastrand::f32() * 2.0 - 1.0,
         }
     }
 }
@@ -142,11 +157,18 @@ impl Iterator for SynthSource {
 
         let time = self.elapsed_samples as f32 / self.sample_rate as f32;
         let env_amp = self.envelope.amplitude(time, self.note_duration);
-        let sample = self.waveform.sample(self.phase);
+        let sample = if self.waveform == Waveform::Noise {
+            self.noise_held
+        } else {
+            self.waveform.sample(self.phase)
+        };
 
         self.phase += self.frequency / self.sample_rate as f32;
         if self.phase >= 1.0 {
             self.phase -= 1.0;
+            if self.waveform == Waveform::Noise {
+                self.noise_held = fastrand::f32() * 2.0 - 1.0;
+            }
         }
 
         self.elapsed_samples += 1;
