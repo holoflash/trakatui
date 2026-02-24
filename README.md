@@ -4,11 +4,7 @@ A music tracker for the terminal, built with Rust.
 
 ![screenshot](screenshot.png)
 
-<audio controls>
-  <source src="demo.wav" type="audio/wav">
-</audio>
-
-_Audio exported from pattern seen in the screenshot_
+[Audio exported from the pattern seen in the screenshot](demo.wav)
 
 ## 🚧 WORK IN PROGRESS
 
