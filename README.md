@@ -1,6 +1,6 @@
 # TRAKATUI
 
-A music tracker built in Rust using [ratatui](https://github.com/ratatui-org/ratatui).
+A music tracker for the terminal.
 
 ### WORK IN PROGRESS
 
