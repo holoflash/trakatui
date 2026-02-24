@@ -8,8 +8,6 @@ use crate::app::{App, Mode, SettingsField};
 use crate::pattern::Cell;
 use crate::synth::CHANNEL_INSTRUMENTS;
 
-const VISIBLE_ROWS: usize = 16;
-
 pub fn draw(frame: &mut Frame, app: &App) {
     let area = frame.area();
 
@@ -76,10 +74,15 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_pattern(frame: &mut Frame, app: &App, area: Rect) {
+    let border_color = if app.mode == Mode::Edit {
+        Color::Yellow
+    } else {
+        Color::DarkGray
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().fg(border_color));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -88,8 +91,7 @@ fn draw_pattern(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let max_visible = (inner.height as usize).saturating_sub(1);
-    let visible_rows = max_visible.min(VISIBLE_ROWS);
+    let visible_rows = (inner.height as usize).saturating_sub(1);
     let scroll_offset = calculate_scroll(app, visible_rows);
 
     let mut header_spans = vec![Span::styled(
@@ -110,8 +112,6 @@ fn draw_pattern(frame: &mut Frame, app: &App, area: Rect) {
     let header_line = Line::from(header_spans);
 
     let mut lines = vec![header_line];
-
-    let selection = app.selection_bounds();
 
     for vis_row in 0..visible_rows {
         let row = scroll_offset + vis_row;
@@ -134,10 +134,6 @@ fn draw_pattern(frame: &mut Frame, app: &App, area: Rect) {
             let is_cursor =
                 app.mode == Mode::Edit && ch == app.cursor_channel && row == app.cursor_row;
             let is_playback = app.mode == Mode::Play && row == app.playback_row;
-            let is_selected = selection.is_some_and(|(ch_min, ch_max, row_min, row_max)| {
-                ch >= ch_min && ch <= ch_max && row >= row_min && row <= row_max
-            });
-
             let cell = app.pattern.get(ch, row);
             let cell_text = match cell {
                 Cell::NoteOn(note) => note.name(),
@@ -149,11 +145,6 @@ fn draw_pattern(frame: &mut Frame, app: &App, area: Rect) {
                 Style::default()
                     .fg(Color::Black)
                     .bg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-            } else if is_selected {
-                Style::default()
-                    .fg(Color::White)
-                    .bg(Color::DarkGray)
                     .add_modifier(Modifier::BOLD)
             } else if is_playback {
                 Style::default().fg(Color::Black).bg(Color::Green)
@@ -305,7 +296,7 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
 
     let help_text = match app.mode {
         Mode::Edit => {
-            "Z..M/Q..U:note  TAB:off  DEL:clear  ,/.:oct  SHIFT+\u{2190}\u{2191}\u{2193}\u{2192}:select  2:settings  ESC:quit"
+            "Z..M/Q..U:note  TAB:off  DEL:clear  ,/.:oct  ENTER:play  2:settings  ESC:quit"
         }
         Mode::Play => "SPACE:stop  ESC:stop",
         Mode::Settings => {
