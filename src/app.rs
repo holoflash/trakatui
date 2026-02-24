@@ -11,7 +11,6 @@ use crate::scale::ScaleIndex;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     Edit,
-    Play,
     Settings,
 }
 
@@ -52,6 +51,7 @@ pub struct App {
     pub cursor_row: usize,
     pub octave: u8,
     pub mode: Mode,
+    pub playing: bool,
     pub playback_row: usize,
     pub bpm: u16,
     pub running: bool,
@@ -71,6 +71,7 @@ impl App {
             cursor_row: 0,
             octave: 4,
             mode: Mode::Edit,
+            playing: false,
             playback_row: 0,
             bpm: 150,
             running: true,
@@ -89,9 +90,13 @@ impl App {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
+        if key.code == KeyCode::Enter && self.playing {
+            self.stop_playback();
+            return;
+        }
+
         match self.mode {
             Mode::Edit => self.handle_edit_key(key),
-            Mode::Play => self.handle_play_key(key.code),
             Mode::Settings => self.handle_settings_key(key.code),
         }
     }
@@ -162,7 +167,11 @@ impl App {
             }
 
             KeyCode::Esc => {
-                self.running = false;
+                if self.playing {
+                    self.stop_playback();
+                } else {
+                    self.running = false;
+                }
             }
 
             other => {
@@ -180,18 +189,15 @@ impl App {
         }
     }
 
-    fn handle_play_key(&mut self, key: KeyCode) {
-        match key {
-            KeyCode::Enter | KeyCode::Esc => {
-                self.stop_playback();
-            }
-            _ => {}
-        }
-    }
-
     fn handle_settings_key(&mut self, key: KeyCode) {
         match key {
-            KeyCode::Esc | KeyCode::Char('1') => {
+            KeyCode::Esc => {
+                if self.playing {
+                    self.stop_playback();
+                }
+                self.mode = Mode::Edit;
+            }
+            KeyCode::Char('1') => {
                 self.mode = Mode::Edit;
             }
             KeyCode::Char('2') => {}
@@ -258,19 +264,19 @@ impl App {
     }
 
     fn start_playback(&mut self) {
-        self.mode = Mode::Play;
+        self.playing = true;
         self.playback_row = 0;
         self.last_step_time = Some(Instant::now());
         self.audio.play_row(&self.pattern, 0, self.step_duration());
     }
 
     fn stop_playback(&mut self) {
-        self.mode = Mode::Edit;
+        self.playing = false;
         self.last_step_time = None;
     }
 
     pub fn tick(&mut self) {
-        if self.mode != Mode::Play {
+        if !self.playing {
             return;
         }
 

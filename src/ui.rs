@@ -29,15 +29,21 @@ pub fn draw(frame: &mut Frame, app: &App) {
 }
 
 fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
-    let mode_str = match app.mode {
-        Mode::Edit => "EDIT",
-        Mode::Play => "▶ PLAYING",
-        Mode::Settings => "SETTINGS",
+    let mode_str = if app.playing {
+        "▶ PLAYING"
+    } else {
+        match app.mode {
+            Mode::Edit => "EDIT",
+            Mode::Settings => "SETTINGS",
+        }
     };
-    let mode_color = match app.mode {
-        Mode::Edit => Color::Cyan,
-        Mode::Play => Color::Green,
-        Mode::Settings => Color::Yellow,
+    let mode_color = if app.playing {
+        Color::Green
+    } else {
+        match app.mode {
+            Mode::Edit => Color::Cyan,
+            Mode::Settings => Color::Yellow,
+        }
     };
 
     let root = root_name(app.transpose);
@@ -127,7 +133,7 @@ fn draw_pattern(frame: &mut Frame, app: &App, area: Rect) {
 
         let mut spans = Vec::new();
 
-        let row_style = if app.mode == Mode::Play && row == app.playback_row {
+        let row_style = if app.playing && row == app.playback_row {
             Style::default()
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD)
@@ -139,7 +145,7 @@ fn draw_pattern(frame: &mut Frame, app: &App, area: Rect) {
         for ch in 0..app.pattern.channels {
             let is_cursor =
                 app.mode == Mode::Edit && ch == app.cursor_channel && row == app.cursor_row;
-            let is_playback = app.mode == Mode::Play && row == app.playback_row;
+            let is_playback = app.playing && row == app.playback_row;
             let cell = app.pattern.get(ch, row);
             let cell_text = match cell {
                 Cell::NoteOn(note) => note.name(),
@@ -174,9 +180,10 @@ fn draw_pattern(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn calculate_scroll(app: &App, visible_rows: usize) -> usize {
-    let focus_row = match app.mode {
-        Mode::Edit | Mode::Settings => app.cursor_row,
-        Mode::Play => app.playback_row,
+    let focus_row = if app.playing {
+        app.playback_row
+    } else {
+        app.cursor_row
     };
 
     if focus_row < visible_rows / 2 {
@@ -247,14 +254,14 @@ fn draw_settings(frame: &mut Frame, app: &App, area: Rect) {
     let mut bpm_spans = vec![cursor(is_bpm), Span::styled("BPM   ", label_style)];
     bpm_spans.extend(arrows(is_bpm, &format!("{:>3}", app.bpm)));
 
-    let mut len_spans = vec![cursor(is_len), Span::styled("Len   ", label_style)];
+    let mut len_spans = vec![cursor(is_len), Span::styled("Length   ", label_style)];
     len_spans.extend(arrows(is_len, &format!("{:>3}", app.pattern.rows)));
 
     let scale_name = app.scale_index.scale().name;
     let mut scale_spans = vec![cursor(is_scale), Span::styled("Scale ", label_style)];
     scale_spans.extend(arrows(is_scale, &format!("{:>9}", scale_name)));
 
-    let mut trans_spans = vec![cursor(is_trans), Span::styled("Trans ", label_style)];
+    let mut trans_spans = vec![cursor(is_trans), Span::styled("Transpose ", label_style)];
     trans_spans.extend(arrows(is_trans, &format!("{:>3}", app.transpose)));
 
     let export_style = if is_export {
@@ -317,7 +324,7 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
         Mode::Edit => {
             "Z..M/Q..U:note  TAB:off  DEL:clear  ,/.:oct  ENTER:play  2:settings  ESC:quit"
         }
-        Mode::Play => "SPACE:stop  ESC:stop",
+        _ if app.playing => "ENTER:stop  ESC:stop",
         Mode::Settings => {
             "\u{2191}\u{2193}:select  \u{2190}\u{2192}:adjust  ENTER:confirm  1:pattern  ESC:back"
         }
