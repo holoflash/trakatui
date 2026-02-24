@@ -1,346 +1,372 @@
-use ratatui::Frame;
-use ratatui::layout::{Alignment, Constraint, Flex, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
+use eframe::egui::{self, Color32, FontId, RichText, ScrollArea, Stroke, Vec2};
 
 use crate::app::{App, Mode, SettingsField};
 use crate::pattern::Cell;
 use crate::scale::root_name;
 use crate::synth::CHANNEL_INSTRUMENTS;
 
-pub fn draw(frame: &mut Frame, app: &App) {
-    let area = frame.area();
+const BG_DARK: Color32 = Color32::from_rgb(18, 18, 24);
+const BG_PANEL: Color32 = Color32::from_rgb(24, 24, 32);
+const BG_HEADER: Color32 = Color32::from_rgb(28, 28, 38);
+const BORDER: Color32 = Color32::from_rgb(50, 50, 65);
+const BORDER_ACTIVE: Color32 = Color32::from_rgb(220, 180, 50);
+const DIM: Color32 = Color32::from_rgb(80, 80, 100);
+const TEXT: Color32 = Color32::from_rgb(200, 200, 210);
+const CYAN: Color32 = Color32::from_rgb(80, 200, 220);
+const YELLOW: Color32 = Color32::from_rgb(220, 180, 50);
+const GREEN: Color32 = Color32::from_rgb(80, 200, 100);
+const MAGENTA: Color32 = Color32::from_rgb(200, 100, 200);
+const RED: Color32 = Color32::from_rgb(220, 80, 80);
+const NOTE_WHITE: Color32 = Color32::from_rgb(230, 230, 240);
+const CURSOR_BG: Color32 = Color32::from_rgb(60, 180, 200);
+const CURSOR_TEXT: Color32 = Color32::from_rgb(10, 10, 15);
+const PLAYBACK_BG: Color32 = Color32::from_rgb(40, 160, 80);
+const PLAYBACK_TEXT: Color32 = Color32::from_rgb(10, 10, 15);
 
-    let chunks = Layout::vertical([
-        Constraint::Length(3),
-        Constraint::Min(1),
-        Constraint::Length(3),
-    ])
-    .split(area);
+const INST_COLORS: [Color32; 4] = [CYAN, YELLOW, RED, MAGENTA];
 
-    draw_header(frame, app, chunks[0]);
-
-    let content = Layout::horizontal([Constraint::Min(1), Constraint::Length(40)]).split(chunks[1]);
-    draw_pattern(frame, app, content[0]);
-    draw_settings(frame, app, content[1]);
-
-    draw_footer(frame, app, chunks[2]);
+pub fn draw(ctx: &egui::Context, app: &mut App) {
+    draw_header(ctx, app);
+    draw_footer(ctx, app);
+    draw_settings_panel(ctx, app);
+    draw_pattern(ctx, app);
 }
 
-fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
-    let mode_str = if app.playing {
-        "▶ PLAYING"
-    } else {
-        match app.mode {
-            Mode::Edit => "EDIT",
-            Mode::Settings => "SETTINGS",
-        }
-    };
-    let mode_color = if app.playing {
-        Color::Green
-    } else {
-        match app.mode {
-            Mode::Edit => Color::Cyan,
-            Mode::Settings => Color::Yellow,
-        }
-    };
+fn draw_header(ctx: &egui::Context, app: &App) {
+    egui::TopBottomPanel::top("header")
+        .frame(
+            egui::Frame::new()
+                .fill(BG_HEADER)
+                .inner_margin(egui::Margin::symmetric(12, 8))
+                .stroke(Stroke::new(1.0, BORDER)),
+        )
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new("TRAKATUI")
+                        .font(FontId::monospace(16.0))
+                        .color(CYAN)
+                        .strong(),
+                );
+                ui.add_space(16.0);
 
-    let root = root_name(app.transpose);
-    let scale_name = app.scale_index.scale().name;
-    let key_label = format!("{} {}", root, scale_name);
-    let header = Paragraph::new(Line::from(vec![
-        Span::styled(
-            " TRAKATUI ",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("  "),
-        Span::styled(
-            format!("[{}]", mode_str),
-            Style::default().fg(mode_color).add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("  "),
-        Span::styled(
-            format!("Oct:{}", app.octave),
-            Style::default().fg(Color::Yellow),
-        ),
-        Span::raw("  "),
-        Span::styled(
-            format!("BPM:{}", app.bpm),
-            Style::default().fg(Color::Magenta),
-        ),
-        Span::raw("  "),
-        Span::styled(key_label, Style::default().fg(Color::Green)),
-    ]))
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(Color::DarkGray)),
-    )
-    .alignment(Alignment::Center);
+                let (mode_str, mode_color) = if app.playing {
+                    ("▶ PLAYING", GREEN)
+                } else {
+                    match app.mode {
+                        Mode::Edit => ("EDIT", CYAN),
+                        Mode::Settings => ("SETTINGS", YELLOW),
+                    }
+                };
+                ui.label(
+                    RichText::new(format!("[{}]", mode_str))
+                        .font(FontId::monospace(14.0))
+                        .color(mode_color)
+                        .strong(),
+                );
+                ui.add_space(16.0);
+                ui.label(
+                    RichText::new(format!("Oct:{}", app.octave))
+                        .font(FontId::monospace(13.0))
+                        .color(YELLOW),
+                );
+                ui.add_space(12.0);
+                ui.label(
+                    RichText::new(format!("BPM:{}", app.bpm))
+                        .font(FontId::monospace(13.0))
+                        .color(MAGENTA),
+                );
+                ui.add_space(12.0);
 
-    frame.render_widget(header, area);
+                let root = root_name(app.transpose);
+                let scale_name = app.scale_index.scale().name;
+                ui.label(
+                    RichText::new(format!("{} {}", root, scale_name))
+                        .font(FontId::monospace(13.0))
+                        .color(GREEN),
+                );
+            });
+        });
 }
 
-fn draw_pattern(frame: &mut Frame, app: &App, area: Rect) {
-    let border_color = if app.mode == Mode::Edit {
-        Color::Yellow
-    } else {
-        Color::DarkGray
-    };
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(border_color));
-
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    if inner.height < 2 || inner.width < 20 {
-        return;
-    }
-
-    let visible_rows = (inner.height as usize).saturating_sub(1);
-    let scroll_offset = calculate_scroll(app, visible_rows);
-
-    let mut header_spans = vec![Span::styled(
-        "     ",
-        Style::default()
-            .fg(Color::DarkGray)
-            .add_modifier(Modifier::DIM),
-    )];
-    let inst_colors = [Color::Cyan, Color::Yellow, Color::Red, Color::Magenta];
-    for ch in 0..app.pattern.channels {
-        let waveform = CHANNEL_INSTRUMENTS[ch % CHANNEL_INSTRUMENTS.len()];
-        let color = inst_colors[ch % inst_colors.len()];
-        header_spans.push(Span::styled(
-            format!("│ {} ", waveform.name()),
-            Style::default().fg(color).add_modifier(Modifier::BOLD),
-        ));
-    }
-    let header_line = Line::from(header_spans);
-
-    let mut lines = vec![header_line];
-
-    for vis_row in 0..visible_rows {
-        let row = scroll_offset + vis_row;
-        if row >= app.pattern.rows {
-            break;
-        }
-
-        let mut spans = Vec::new();
-
-        let row_style = if app.playing && row == app.playback_row {
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::DarkGray)
-        };
-        spans.push(Span::styled(format!("  {:02} ", row), row_style));
-
-        for ch in 0..app.pattern.channels {
-            let is_cursor =
-                app.mode == Mode::Edit && ch == app.cursor_channel && row == app.cursor_row;
-            let is_playback = app.playing && row == app.playback_row;
-            let cell = app.pattern.get(ch, row);
-            let cell_text = match cell {
-                Cell::NoteOn(note) => note.name(),
-                Cell::NoteOff => "OFF".to_string(),
-                Cell::Empty => "···".to_string(),
-            };
-
-            let style = if is_cursor {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-            } else if is_playback {
-                Style::default().fg(Color::Black).bg(Color::Green)
-            } else {
-                match cell {
-                    Cell::NoteOn(_) => Style::default().fg(Color::White),
-                    Cell::NoteOff => Style::default().fg(Color::Red),
-                    Cell::Empty => Style::default().fg(Color::DarkGray),
+fn draw_footer(ctx: &egui::Context, app: &App) {
+    egui::TopBottomPanel::bottom("footer")
+        .frame(
+            egui::Frame::new()
+                .fill(BG_HEADER)
+                .inner_margin(egui::Margin::symmetric(12, 6))
+                .stroke(Stroke::new(1.0, BORDER)),
+        )
+        .show(ctx, |ui| {
+            let help_text = match app.mode {
+                Mode::Edit => {
+                    "Z..M/Q..U:note  TAB:off  DEL:clear  ,/.:oct  ENTER:play  2:settings  ESC:quit"
+                }
+                _ if app.playing => "ENTER:stop  ESC:stop",
+                Mode::Settings => {
+                    "\u{2191}\u{2193}:select  \u{2190}\u{2192}:adjust  ENTER:confirm  1:pattern  ESC:back"
                 }
             };
-
-            spans.push(Span::styled("│", Style::default().fg(Color::DarkGray)));
-            spans.push(Span::styled(format!(" {} ", cell_text), style));
-        }
-
-        lines.push(Line::from(spans));
-    }
-
-    let grid = Paragraph::new(lines);
-    frame.render_widget(grid, inner);
+            ui.horizontal(|ui| {
+                ui.centered_and_justified(|ui| {
+                    ui.label(
+                        RichText::new(help_text)
+                            .font(FontId::monospace(12.0))
+                            .color(DIM),
+                    );
+                });
+            });
+        });
 }
 
-fn calculate_scroll(app: &App, visible_rows: usize) -> usize {
-    let focus_row = if app.playing {
-        app.playback_row
-    } else {
-        app.cursor_row
-    };
-
-    if focus_row < visible_rows / 2 {
-        0
-    } else if focus_row + visible_rows / 2 >= app.pattern.rows {
-        app.pattern.rows.saturating_sub(visible_rows)
-    } else {
-        focus_row - visible_rows / 2
-    }
-}
-
-fn draw_settings(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_settings_panel(ctx: &egui::Context, app: &mut App) {
     let border_color = if app.mode == Mode::Settings {
-        Color::Yellow
+        BORDER_ACTIVE
     } else {
-        Color::DarkGray
-    };
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(border_color));
-
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let dim = Style::default().fg(Color::DarkGray);
-    let label_style = Style::default().fg(Color::Gray);
-    let value_style = Style::default()
-        .fg(Color::White)
-        .add_modifier(Modifier::BOLD);
-    let selected_value = Style::default()
-        .fg(Color::Yellow)
-        .add_modifier(Modifier::BOLD);
-    let cursor_style = Style::default()
-        .fg(Color::Yellow)
-        .add_modifier(Modifier::BOLD);
-
-    let is_bpm = app.settings_field == SettingsField::Bpm;
-    let is_len = app.settings_field == SettingsField::PatternLength;
-    let is_scale = app.settings_field == SettingsField::Scale;
-    let is_trans = app.settings_field == SettingsField::Transpose;
-    let is_export = app.settings_field == SettingsField::ExportWav;
-
-    let cursor = |active: bool| -> Span {
-        if active {
-            Span::styled(" ▸ ", cursor_style)
-        } else {
-            Span::raw("   ")
-        }
+        BORDER
     };
 
-    let arrows = |active: bool, val: &str| -> Vec<Span> {
-        if active {
-            vec![
-                Span::styled("◄ ", Style::default().fg(Color::DarkGray)),
-                Span::styled(val.to_string(), selected_value),
-                Span::styled(" ►", Style::default().fg(Color::DarkGray)),
-            ]
-        } else {
-            vec![
-                Span::raw("  "),
-                Span::styled(val.to_string(), value_style),
-                Span::raw("  "),
-            ]
-        }
-    };
+    egui::SidePanel::right("settings")
+        .exact_width(280.0)
+        .frame(
+            egui::Frame::new()
+                .fill(BG_PANEL)
+                .inner_margin(egui::Margin::symmetric(16, 12))
+                .stroke(Stroke::new(1.0, border_color)),
+        )
+        .show(ctx, |ui| {
+            ui.add_space(4.0);
+            ui.label(
+                RichText::new("Settings")
+                    .font(FontId::monospace(15.0))
+                    .color(YELLOW)
+                    .strong(),
+            );
+            ui.add_space(2.0);
+            let sep_color = DIM;
+            ui.painter().line_segment(
+                [
+                    ui.cursor().left_top(),
+                    ui.cursor().left_top() + Vec2::new(240.0, 0.0),
+                ],
+                Stroke::new(1.0, sep_color),
+            );
+            ui.add_space(10.0);
 
-    let mut bpm_spans = vec![cursor(is_bpm), Span::styled("BPM   ", label_style)];
-    bpm_spans.extend(arrows(is_bpm, &format!("{:>3}", app.bpm)));
+            settings_row(
+                ui,
+                "BPM",
+                &format!("{:>3}", app.bpm),
+                app.settings_field == SettingsField::Bpm,
+            );
+            ui.add_space(6.0);
+            settings_row(
+                ui,
+                "Length",
+                &format!("{:>3}", app.pattern.rows),
+                app.settings_field == SettingsField::PatternLength,
+            );
+            ui.add_space(6.0);
+            settings_row(
+                ui,
+                "Scale",
+                &format!("{:>9}", app.scale_index.scale().name),
+                app.settings_field == SettingsField::Scale,
+            );
+            ui.add_space(6.0);
+            settings_row(
+                ui,
+                "Transpose",
+                &format!("{:>3}", app.transpose),
+                app.settings_field == SettingsField::Transpose,
+            );
+            ui.add_space(12.0);
 
-    let mut len_spans = vec![cursor(is_len), Span::styled("Length   ", label_style)];
-    len_spans.extend(arrows(is_len, &format!("{:>3}", app.pattern.rows)));
+            ui.painter().line_segment(
+                [
+                    ui.cursor().left_top(),
+                    ui.cursor().left_top() + Vec2::new(240.0, 0.0),
+                ],
+                Stroke::new(1.0, sep_color),
+            );
+            ui.add_space(12.0);
 
-    let scale_name = app.scale_index.scale().name;
-    let mut scale_spans = vec![cursor(is_scale), Span::styled("Scale ", label_style)];
-    scale_spans.extend(arrows(is_scale, &format!("{:>9}", scale_name)));
+            let is_export = app.settings_field == SettingsField::ExportWav;
+            let cursor_str = if is_export { " ▸ " } else { "   " };
+            ui.horizontal(|ui| {
+                if is_export {
+                    ui.label(
+                        RichText::new(cursor_str)
+                            .font(FontId::monospace(13.0))
+                            .color(YELLOW)
+                            .strong(),
+                    );
+                } else {
+                    ui.label(
+                        RichText::new(cursor_str)
+                            .font(FontId::monospace(13.0))
+                            .color(DIM),
+                    );
+                }
+                let export_text = RichText::new(" Export WAV ")
+                    .font(FontId::monospace(13.0))
+                    .strong();
+                if is_export {
+                    ui.label(export_text.color(CURSOR_TEXT).background_color(GREEN));
+                } else {
+                    ui.label(export_text.color(GREEN));
+                }
+            });
 
-    let mut trans_spans = vec![cursor(is_trans), Span::styled("Transpose ", label_style)];
-    trans_spans.extend(arrows(is_trans, &format!("{:>3}", app.transpose)));
-
-    let export_style = if is_export {
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::Green)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::Green)
-    };
-
-    let mut lines = vec![
-        Line::from(Span::styled(
-            " Settings",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(Span::styled(" ─────────────────────────────", dim)),
-        Line::from(""),
-        Line::from(bpm_spans),
-        Line::from(""),
-        Line::from(len_spans),
-        Line::from(""),
-        Line::from(scale_spans),
-        Line::from(""),
-        Line::from(trans_spans),
-        Line::from(""),
-        Line::from(Span::styled(" ─────────────────────────────", dim)),
-        Line::from(""),
-        Line::from(vec![
-            cursor(is_export),
-            Span::styled(" Export WAV ", export_style),
-        ]),
-    ];
-
-    if let Some(ref msg) = app.status_message {
-        let color = if msg.starts_with("Exported") {
-            Color::Green
-        } else {
-            Color::Red
-        };
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            format!("   {}", msg),
-            Style::default().fg(color),
-        )));
-    }
-
-    let paragraph = Paragraph::new(lines);
-    frame.render_widget(paragraph, inner);
+            if let Some(ref msg) = app.status_message {
+                ui.add_space(8.0);
+                let color = if msg.starts_with("Exported") {
+                    GREEN
+                } else {
+                    RED
+                };
+                ui.label(
+                    RichText::new(msg.as_str())
+                        .font(FontId::monospace(11.0))
+                        .color(color),
+                );
+            }
+        });
 }
 
-fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
-    let horizontal = Layout::horizontal([Constraint::Percentage(100)])
-        .flex(Flex::Center)
-        .split(area);
+fn settings_row(ui: &mut egui::Ui, label: &str, value: &str, active: bool) {
+    ui.horizontal(|ui| {
+        let cursor_str = if active { " ▸ " } else { "   " };
+        let cursor_color = if active { YELLOW } else { DIM };
+        ui.label(
+            RichText::new(cursor_str)
+                .font(FontId::monospace(13.0))
+                .color(cursor_color)
+                .strong(),
+        );
+        ui.label(
+            RichText::new(format!("{:<10}", label))
+                .font(FontId::monospace(13.0))
+                .color(TEXT),
+        );
+        if active {
+            ui.label(RichText::new("◄").font(FontId::monospace(12.0)).color(DIM));
+            ui.label(
+                RichText::new(value)
+                    .font(FontId::monospace(13.0))
+                    .color(YELLOW)
+                    .strong(),
+            );
+            ui.label(RichText::new("►").font(FontId::monospace(12.0)).color(DIM));
+        } else {
+            ui.label(RichText::new(" ").font(FontId::monospace(12.0)));
+            ui.label(
+                RichText::new(value)
+                    .font(FontId::monospace(13.0))
+                    .color(NOTE_WHITE)
+                    .strong(),
+            );
+        }
+    });
+}
 
-    let help_text = match app.mode {
-        Mode::Edit => {
-            "Z..M/Q..U:note  TAB:off  DEL:clear  ,/.:oct  ENTER:play  2:settings  ESC:quit"
-        }
-        _ if app.playing => "ENTER:stop  ESC:stop",
-        Mode::Settings => {
-            "\u{2191}\u{2193}:select  \u{2190}\u{2192}:adjust  ENTER:confirm  1:pattern  ESC:back"
-        }
+fn draw_pattern(ctx: &egui::Context, app: &mut App) {
+    let border_color = if app.mode == Mode::Edit {
+        BORDER_ACTIVE
+    } else {
+        BORDER
     };
 
-    let footer = Paragraph::new(Line::from(Span::styled(
-        help_text,
-        Style::default().fg(Color::DarkGray),
-    )))
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(Color::DarkGray)),
-    )
-    .alignment(Alignment::Center);
+    egui::CentralPanel::default()
+        .frame(
+            egui::Frame::new()
+                .fill(BG_DARK)
+                .inner_margin(egui::Margin::symmetric(8, 6))
+                .stroke(Stroke::new(1.0, border_color)),
+        )
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new("     ")
+                        .font(FontId::monospace(13.0))
+                        .color(DIM),
+                );
+                for ch in 0..app.pattern.channels {
+                    let waveform = CHANNEL_INSTRUMENTS[ch % CHANNEL_INSTRUMENTS.len()];
+                    let color = INST_COLORS[ch % INST_COLORS.len()];
+                    ui.label(
+                        RichText::new(format!("│ {} ", waveform.name()))
+                            .font(FontId::monospace(13.0))
+                            .color(color)
+                            .strong(),
+                    );
+                }
+            });
 
-    frame.render_widget(footer, horizontal[0]);
+            ui.add_space(2.0);
+
+            ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    for row in 0..app.pattern.rows {
+                        ui.horizontal(|ui| {
+                            let row_style = if app.playing && row == app.playback_row {
+                                (GREEN, true)
+                            } else {
+                                (DIM, false)
+                            };
+                            ui.label(
+                                RichText::new(format!("  {:02} ", row))
+                                    .font(FontId::monospace(13.0))
+                                    .color(row_style.0)
+                                    .strong(),
+                            );
+
+                            for ch in 0..app.pattern.channels {
+                                let is_cursor = app.mode == Mode::Edit
+                                    && ch == app.cursor_channel
+                                    && row == app.cursor_row;
+                                let is_playback = app.playing && row == app.playback_row;
+                                let cell = app.pattern.get(ch, row);
+                                let cell_text = match cell {
+                                    Cell::NoteOn(note) => note.name(),
+                                    Cell::NoteOff => "OFF".to_string(),
+                                    Cell::Empty => "···".to_string(),
+                                };
+
+                                ui.label(
+                                    RichText::new("│")
+                                        .font(FontId::monospace(13.0))
+                                        .color(BORDER),
+                                );
+
+                                let text = RichText::new(format!(" {} ", cell_text))
+                                    .font(FontId::monospace(13.0));
+
+                                let text = if is_cursor {
+                                    text.color(CURSOR_TEXT).background_color(CURSOR_BG).strong()
+                                } else if is_playback {
+                                    text.color(PLAYBACK_TEXT).background_color(PLAYBACK_BG)
+                                } else {
+                                    match cell {
+                                        Cell::NoteOn(_) => text.color(NOTE_WHITE),
+                                        Cell::NoteOff => text.color(RED),
+                                        Cell::Empty => text.color(DIM),
+                                    }
+                                };
+
+                                let response = ui.label(text);
+
+                                if response.clicked() {
+                                    app.set_cursor(ch, row);
+                                    if app.mode != Mode::Edit {
+                                        app.mode = Mode::Edit;
+                                    }
+                                }
+                            }
+                        });
+                    }
+                });
+        });
 }

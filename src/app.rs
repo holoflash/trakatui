@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use crossterm::event::{KeyCode, KeyEvent};
+use eframe::egui::{self, Key};
 
 use crate::audio::AudioEngine;
 use crate::export;
@@ -54,7 +54,6 @@ pub struct App {
     pub playing: bool,
     pub playback_row: usize,
     pub bpm: u16,
-    pub running: bool,
     pub audio: AudioEngine,
     pub settings_field: SettingsField,
     pub scale_index: ScaleIndex,
@@ -74,7 +73,6 @@ impl App {
             playing: false,
             playback_row: 0,
             bpm: 120,
-            running: true,
             audio: AudioEngine::new(),
             settings_field: SettingsField::Bpm,
             scale_index: ScaleIndex::default(),
@@ -89,125 +87,143 @@ impl App {
         Duration::from_secs_f64(seconds)
     }
 
-    pub fn handle_key(&mut self, key: KeyEvent) {
-        if key.code == KeyCode::Enter && self.playing {
-            self.stop_playback();
-            return;
-        }
+    pub fn handle_input(&mut self, ctx: &egui::Context) -> bool {
+        ctx.input(|input| {
+            if input.key_pressed(Key::Enter) && self.playing {
+                self.stop_playback();
+                return false;
+            }
 
-        match self.mode {
-            Mode::Edit => self.handle_edit_key(key),
-            Mode::Settings => self.handle_settings_key(key.code),
-        }
+            match self.mode {
+                Mode::Edit => self.handle_edit_input(input),
+                Mode::Settings => {
+                    self.handle_settings_input(input);
+                    false
+                }
+            }
+        })
     }
 
-    fn handle_edit_key(&mut self, key: KeyEvent) {
-        if key.code == KeyCode::Char('2') {
+    fn handle_edit_input(&mut self, input: &egui::InputState) -> bool {
+        if input.key_pressed(Key::Num2) {
             self.mode = Mode::Settings;
             self.settings_field = SettingsField::Bpm;
-            return;
+            return false;
         }
 
-        match key.code {
-            KeyCode::Up => {
-                if self.cursor_row > 0 {
-                    self.cursor_row -= 1;
-                } else {
-                    self.cursor_row = self.pattern.rows - 1;
-                }
+        if input.key_pressed(Key::ArrowUp) {
+            if self.cursor_row > 0 {
+                self.cursor_row -= 1;
+            } else {
+                self.cursor_row = self.pattern.rows - 1;
             }
-            KeyCode::Down => {
-                if self.cursor_row < self.pattern.rows - 1 {
-                    self.cursor_row += 1;
-                } else {
-                    self.cursor_row = 0;
-                }
+        } else if input.key_pressed(Key::ArrowDown) {
+            if self.cursor_row < self.pattern.rows - 1 {
+                self.cursor_row += 1;
+            } else {
+                self.cursor_row = 0;
             }
-            KeyCode::Left => {
-                if self.cursor_channel > 0 {
-                    self.cursor_channel -= 1;
-                } else {
-                    self.cursor_channel = self.pattern.channels - 1;
-                }
+        } else if input.key_pressed(Key::ArrowLeft) {
+            if self.cursor_channel > 0 {
+                self.cursor_channel -= 1;
+            } else {
+                self.cursor_channel = self.pattern.channels - 1;
             }
-            KeyCode::Right => {
-                if self.cursor_channel < self.pattern.channels - 1 {
-                    self.cursor_channel += 1;
-                } else {
-                    self.cursor_channel = 0;
-                }
+        } else if input.key_pressed(Key::ArrowRight) {
+            if self.cursor_channel < self.pattern.channels - 1 {
+                self.cursor_channel += 1;
+            } else {
+                self.cursor_channel = 0;
             }
-
-            KeyCode::Delete | KeyCode::Backspace => {
-                self.pattern.clear(self.cursor_channel, self.cursor_row);
-                self.cursor_row = (self.cursor_row + 1) % self.pattern.rows;
+        } else if input.key_pressed(Key::Delete) || input.key_pressed(Key::Backspace) {
+            self.pattern.clear(self.cursor_channel, self.cursor_row);
+            self.cursor_row = (self.cursor_row + 1) % self.pattern.rows;
+        } else if input.key_pressed(Key::Tab) {
+            self.pattern
+                .set(self.cursor_channel, self.cursor_row, Cell::NoteOff);
+            if self.cursor_row < self.pattern.rows - 1 {
+                self.cursor_row += 1;
             }
-
-            KeyCode::Tab => {
-                self.pattern
-                    .set(self.cursor_channel, self.cursor_row, Cell::NoteOff);
-                if self.cursor_row < self.pattern.rows - 1 {
-                    self.cursor_row += 1;
-                }
+        } else if input.key_pressed(Key::Period) {
+            if self.octave < 8 {
+                self.octave += 1;
             }
-
-            KeyCode::Char('.') => {
-                if self.octave < 8 {
-                    self.octave += 1;
-                }
+        } else if input.key_pressed(Key::Comma) {
+            if self.octave > 0 {
+                self.octave -= 1;
             }
-            KeyCode::Char(',') => {
-                if self.octave > 0 {
-                    self.octave -= 1;
-                }
+        } else if input.key_pressed(Key::Enter) {
+            self.start_playback();
+        } else if input.key_pressed(Key::Escape) {
+            if self.playing {
+                self.stop_playback();
+            } else {
+                return true; // signal close
             }
-
-            KeyCode::Enter => {
-                self.start_playback();
-            }
-
-            KeyCode::Esc => {
-                if self.playing {
-                    self.stop_playback();
-                } else {
-                    self.running = false;
-                }
-            }
-
-            other => {
-                let scale = self.scale_index.scale();
-                if let Some(note) = key_to_note(other, self.octave, scale, self.transpose) {
-                    self.pattern
-                        .set(self.cursor_channel, self.cursor_row, Cell::NoteOn(note));
-                    self.audio
-                        .preview_note(note.frequency(), self.cursor_channel);
-                    if self.cursor_row < self.pattern.rows - 1 {
-                        self.cursor_row += 1;
+        } else {
+            let note_keys = [
+                Key::Z,
+                Key::X,
+                Key::C,
+                Key::V,
+                Key::B,
+                Key::N,
+                Key::M,
+                Key::A,
+                Key::S,
+                Key::D,
+                Key::F,
+                Key::G,
+                Key::H,
+                Key::J,
+                Key::K,
+                Key::L,
+                Key::Q,
+                Key::W,
+                Key::E,
+                Key::R,
+                Key::T,
+                Key::Y,
+                Key::U,
+                Key::I,
+                Key::O,
+                Key::P,
+            ];
+            for &k in &note_keys {
+                if input.key_pressed(k) {
+                    let scale = self.scale_index.scale();
+                    if let Some(note) = key_to_note(k, self.octave, scale, self.transpose) {
+                        self.pattern
+                            .set(self.cursor_channel, self.cursor_row, Cell::NoteOn(note));
+                        self.audio
+                            .preview_note(note.frequency(), self.cursor_channel);
+                        if self.cursor_row < self.pattern.rows - 1 {
+                            self.cursor_row += 1;
+                        }
                     }
+                    break;
                 }
             }
         }
+
+        false
     }
 
-    fn handle_settings_key(&mut self, key: KeyCode) {
-        match key {
-            KeyCode::Esc => {
-                if self.playing {
-                    self.stop_playback();
-                }
-                self.mode = Mode::Edit;
+    fn handle_settings_input(&mut self, input: &egui::InputState) {
+        if input.key_pressed(Key::Escape) {
+            if self.playing {
+                self.stop_playback();
             }
-            KeyCode::Char('1') => {
-                self.mode = Mode::Edit;
-            }
-            KeyCode::Char('2') => {}
-            KeyCode::Down => {
-                self.settings_field = self.settings_field.next();
-            }
-            KeyCode::Up => {
-                self.settings_field = self.settings_field.prev();
-            }
-            KeyCode::Right => match self.settings_field {
+            self.mode = Mode::Edit;
+        } else if input.key_pressed(Key::Num1) {
+            self.mode = Mode::Edit;
+        } else if input.key_pressed(Key::Num2) {
+        } else if input.key_pressed(Key::ArrowDown) {
+            self.settings_field = self.settings_field.next();
+        } else if input.key_pressed(Key::ArrowUp) {
+            self.settings_field = self.settings_field.prev();
+        } else if input.key_pressed(Key::ArrowRight) {
+            match self.settings_field {
                 SettingsField::Bpm => {
                     self.bpm = (self.bpm + 1).min(300);
                 }
@@ -222,8 +238,9 @@ impl App {
                     self.transpose = (self.transpose + 1).min(12);
                 }
                 SettingsField::ExportWav => {}
-            },
-            KeyCode::Left => match self.settings_field {
+            }
+        } else if input.key_pressed(Key::ArrowLeft) {
+            match self.settings_field {
                 SettingsField::Bpm => {
                     self.bpm = self.bpm.saturating_sub(1).max(20);
                 }
@@ -241,13 +258,11 @@ impl App {
                     self.transpose = (self.transpose - 1).max(-12);
                 }
                 SettingsField::ExportWav => {}
-            },
-            KeyCode::Enter => {
-                if self.settings_field == SettingsField::ExportWav {
-                    self.do_export();
-                }
             }
-            _ => {}
+        } else if input.key_pressed(Key::Enter) {
+            if self.settings_field == SettingsField::ExportWav {
+                self.do_export();
+            }
         }
     }
 
@@ -287,6 +302,13 @@ impl App {
                     .play_row(&self.pattern, self.playback_row, self.step_duration());
                 self.last_step_time = Some(Instant::now());
             }
+        }
+    }
+
+    pub fn set_cursor(&mut self, channel: usize, row: usize) {
+        if channel < self.pattern.channels && row < self.pattern.rows {
+            self.cursor_channel = channel;
+            self.cursor_row = row;
         }
     }
 }

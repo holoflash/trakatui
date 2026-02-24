@@ -7,29 +7,52 @@ mod scale;
 mod synth;
 mod ui;
 
-use std::io;
-use std::time::Duration;
+use eframe::egui;
 
-use crossterm::event::{self, Event, KeyEventKind};
+fn main() -> eframe::Result<()> {
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1100.0, 700.0])
+            .with_min_inner_size([800.0, 500.0])
+            .with_title("TRAKATUI"),
+        ..Default::default()
+    };
 
-fn main() -> io::Result<()> {
-    let mut terminal = ratatui::init();
-    let mut app = app::App::new();
+    eframe::run_native(
+        "trakatui",
+        options,
+        Box::new(|cc| {
+            cc.egui_ctx.set_visuals(egui::Visuals::dark());
+            Ok(Box::new(TrakatuiApp::new()))
+        }),
+    )
+}
 
-    while app.running {
-        terminal.draw(|frame| ui::draw(frame, &app))?;
+struct TrakatuiApp {
+    app: app::App,
+}
 
-        if event::poll(Duration::from_millis(16))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    app.handle_key(key);
-                }
-            }
+impl TrakatuiApp {
+    fn new() -> Self {
+        Self {
+            app: app::App::new(),
+        }
+    }
+}
+
+impl eframe::App for TrakatuiApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let should_close = self.app.handle_input(ctx);
+        if should_close {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
 
-        app.tick();
-    }
+        self.app.tick();
 
-    ratatui::restore();
-    Ok(())
+        ui::draw(ctx, &mut self.app);
+
+        if self.app.playing {
+            ctx.request_repaint();
+        }
+    }
 }
