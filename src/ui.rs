@@ -4,7 +4,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 
-use crate::app::{App, Mode};
+use crate::app::{App, Mode, SettingsField};
 use crate::pattern::Cell;
 use crate::synth::CHANNEL_INSTRUMENTS;
 
@@ -21,7 +21,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
     .split(area);
 
     draw_header(frame, app, chunks[0]);
-    draw_pattern(frame, app, chunks[1]);
+    if app.mode == Mode::Settings {
+        draw_settings(frame, app, chunks[1]);
+    } else {
+        draw_pattern(frame, app, chunks[1]);
+    }
     draw_footer(frame, app, chunks[2]);
 }
 
@@ -29,10 +33,12 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
     let mode_str = match app.mode {
         Mode::Edit => "EDIT",
         Mode::Play => "▶ PLAY",
+        Mode::Settings => "⚙ SETTINGS",
     };
     let mode_color = match app.mode {
         Mode::Edit => Color::Cyan,
         Mode::Play => Color::Green,
+        Mode::Settings => Color::Yellow,
     };
 
     let header = Paragraph::new(Line::from(vec![
@@ -87,7 +93,7 @@ fn draw_pattern(frame: &mut Frame, app: &App, area: Rect) {
     let scroll_offset = calculate_scroll(app, visible_rows);
 
     let mut header_spans = vec![Span::styled(
-        " ROW ",
+        "     ",
         Style::default()
             .fg(Color::DarkGray)
             .add_modifier(Modifier::DIM),
@@ -162,7 +168,7 @@ fn draw_pattern(frame: &mut Frame, app: &App, area: Rect) {
 
 fn calculate_scroll(app: &App, visible_rows: usize) -> usize {
     let focus_row = match app.mode {
-        Mode::Edit => app.cursor_row,
+        Mode::Edit | Mode::Settings => app.cursor_row,
         Mode::Play => app.playback_row,
     };
 
@@ -175,6 +181,84 @@ fn calculate_scroll(app: &App, visible_rows: usize) -> usize {
     }
 }
 
+fn draw_settings(frame: &mut Frame, app: &App, area: Rect) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(Color::Yellow));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let vertical = Layout::vertical([Constraint::Length(11)])
+        .flex(Flex::Center)
+        .split(inner);
+    let horizontal = Layout::horizontal([Constraint::Length(40)])
+        .flex(Flex::Center)
+        .split(vertical[0]);
+    let settings_area = horizontal[0];
+
+    let selected_style = Style::default()
+        .fg(Color::Black)
+        .bg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
+    let normal_style = Style::default().fg(Color::White);
+
+    let bpm_style = if app.settings_field == SettingsField::Bpm {
+        selected_style
+    } else {
+        normal_style
+    };
+    let len_style = if app.settings_field == SettingsField::PatternLength {
+        selected_style
+    } else {
+        normal_style
+    };
+    let export_style = if app.settings_field == SettingsField::ExportWav {
+        selected_style
+    } else {
+        Style::default().fg(Color::Green)
+    };
+
+    let mut lines = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            "PROJECT SETTINGS",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            format!("BPM:            {:<6}", app.bpm),
+            bpm_style,
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            format!("Pattern Length: {:<6}", app.pattern.rows),
+            len_style,
+        )),
+        Line::from(""),
+        Line::from(Span::styled("[ Export as WAV ]", export_style)),
+        Line::from(""),
+    ];
+
+    if let Some(ref msg) = app.status_message {
+        let color = if msg.starts_with("Exported") {
+            Color::Green
+        } else {
+            Color::Red
+        };
+        lines.push(Line::from(Span::styled(
+            format!("  {}", msg),
+            Style::default().fg(color),
+        )));
+    }
+
+    let paragraph = Paragraph::new(lines);
+    frame.render_widget(paragraph, settings_area);
+}
+
 fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
     let horizontal = Layout::horizontal([Constraint::Percentage(100)])
         .flex(Flex::Center)
@@ -182,9 +266,12 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
 
     let help_text = match app.mode {
         Mode::Edit => {
-            "SPACE:play  ↑↓←→:move  Z..M/Q..U:note  TAB:off  DEL:clear  +/-:oct  ESC:quit"
+            "SPACE:play  \u{2191}\u{2193}\u{2190}\u{2192}:move  Z..M/Q..U:note  TAB:off  DEL:clear  ,/.:oct  \u{2318}1:settings  ESC:quit"
         }
         Mode::Play => "SPACE:stop  ESC:stop",
+        Mode::Settings => {
+            "\u{2191}\u{2193}:select  \u{2190}\u{2192}:adjust  ENTER:confirm  ESC:back"
+        }
     };
 
     let footer = Paragraph::new(Line::from(Span::styled(

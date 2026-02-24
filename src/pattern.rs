@@ -31,12 +31,6 @@ pub enum Cell {
     NoteOff,
 }
 
-impl Cell {
-    pub fn is_empty(&self) -> bool {
-        matches!(self, Cell::Empty)
-    }
-}
-
 pub struct Pattern {
     pub channels: usize,
     pub rows: usize,
@@ -62,6 +56,13 @@ impl Pattern {
 
     pub fn clear(&mut self, channel: usize, row: usize) {
         self.data[channel][row] = Cell::Empty;
+    }
+
+    pub fn resize(&mut self, new_rows: usize) {
+        for ch in self.data.iter_mut() {
+            ch.resize(new_rows, Cell::Empty);
+        }
+        self.rows = new_rows;
     }
 }
 

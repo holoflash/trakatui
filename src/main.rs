@@ -1,5 +1,6 @@
 mod app;
 mod audio;
+mod export;
 mod keys;
 mod pattern;
 mod synth;
@@ -20,7 +21,7 @@ fn main() -> io::Result<()> {
         if event::poll(Duration::from_millis(16))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    app.handle_key(key.code);
+                    app.handle_key(key);
                 }
             }
         }
