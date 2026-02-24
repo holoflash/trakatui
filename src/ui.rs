@@ -111,6 +111,8 @@ fn draw_pattern(frame: &mut Frame, app: &App, area: Rect) {
 
     let mut lines = vec![header_line];
 
+    let selection = app.selection_bounds();
+
     for vis_row in 0..visible_rows {
         let row = scroll_offset + vis_row;
         if row >= app.pattern.rows {
@@ -132,6 +134,9 @@ fn draw_pattern(frame: &mut Frame, app: &App, area: Rect) {
             let is_cursor =
                 app.mode == Mode::Edit && ch == app.cursor_channel && row == app.cursor_row;
             let is_playback = app.mode == Mode::Play && row == app.playback_row;
+            let is_selected = selection.is_some_and(|(ch_min, ch_max, row_min, row_max)| {
+                ch >= ch_min && ch <= ch_max && row >= row_min && row <= row_max
+            });
 
             let cell = app.pattern.get(ch, row);
             let cell_text = match cell {
@@ -144,6 +149,11 @@ fn draw_pattern(frame: &mut Frame, app: &App, area: Rect) {
                 Style::default()
                     .fg(Color::Black)
                     .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else if is_selected {
+                Style::default()
+                    .fg(Color::White)
+                    .bg(Color::DarkGray)
                     .add_modifier(Modifier::BOLD)
             } else if is_playback {
                 Style::default().fg(Color::Black).bg(Color::Green)
@@ -266,7 +276,7 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
 
     let help_text = match app.mode {
         Mode::Edit => {
-            "SPACE:play  \u{2191}\u{2193}\u{2190}\u{2192}:move  Z..M/Q..U:note  TAB:off  DEL:clear  ,/.:oct  \u{2318}1:settings  ESC:quit"
+            "Z..M/Q..U:note  TAB:off  DEL:clear  ,/.:oct  SHIFT+\u{2190}\u{2191}\u{2193}\u{2192}:select  \u{2318}1:settings  ESC:quit"
         }
         Mode::Play => "SPACE:stop  ESC:stop",
         Mode::Settings => {

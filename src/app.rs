@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::audio::AudioEngine;
 use crate::export;
@@ -51,6 +51,7 @@ pub struct App {
     pub audio: AudioEngine,
     pub settings_field: SettingsField,
     pub status_message: Option<String>,
+    pub selection_anchor: Option<(usize, usize)>,
     last_step_time: Option<Instant>,
 }
 
@@ -68,8 +69,22 @@ impl App {
             audio: AudioEngine::new(),
             settings_field: SettingsField::Bpm,
             status_message: None,
+            selection_anchor: None,
             last_step_time: None,
         }
+    }
+
+    pub fn selection_bounds(&self) -> Option<(usize, usize, usize, usize)> {
+        let (ach, arow) = self.selection_anchor?;
+        let ch_min = ach.min(self.cursor_channel);
+        let ch_max = ach.max(self.cursor_channel);
+        let row_min = arow.min(self.cursor_row);
+        let row_max = arow.max(self.cursor_row);
+        Some((ch_min, ch_max, row_min, row_max))
+    }
+
+    pub fn clear_selection(&mut self) {
+        self.selection_anchor = None;
     }
 
     pub fn step_duration(&self) -> Duration {
@@ -87,38 +102,64 @@ impl App {
 
     fn handle_edit_key(&mut self, key: KeyEvent) {
         if key.code == KeyCode::Char('1') {
+            self.clear_selection();
             self.mode = Mode::Settings;
             self.settings_field = SettingsField::Bpm;
             return;
         }
 
+        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+
         match key.code {
-            KeyCode::Up => {
-                if self.cursor_row > 0 {
-                    self.cursor_row -= 1;
+            KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right => {
+                if shift {
+                    if self.selection_anchor.is_none() {
+                        self.selection_anchor = Some((self.cursor_channel, self.cursor_row));
+                    }
+                } else {
+                    self.clear_selection();
                 }
-            }
-            KeyCode::Down => {
-                if self.cursor_row < self.pattern.rows - 1 {
-                    self.cursor_row += 1;
-                }
-            }
-            KeyCode::Left => {
-                if self.cursor_channel > 0 {
-                    self.cursor_channel -= 1;
-                }
-            }
-            KeyCode::Right => {
-                if self.cursor_channel < self.pattern.channels - 1 {
-                    self.cursor_channel += 1;
+
+                match key.code {
+                    KeyCode::Up => {
+                        if self.cursor_row > 0 {
+                            self.cursor_row -= 1;
+                        }
+                    }
+                    KeyCode::Down => {
+                        if self.cursor_row < self.pattern.rows - 1 {
+                            self.cursor_row += 1;
+                        }
+                    }
+                    KeyCode::Left => {
+                        if self.cursor_channel > 0 {
+                            self.cursor_channel -= 1;
+                        }
+                    }
+                    KeyCode::Right => {
+                        if self.cursor_channel < self.pattern.channels - 1 {
+                            self.cursor_channel += 1;
+                        }
+                    }
+                    _ => unreachable!(),
                 }
             }
 
             KeyCode::Delete | KeyCode::Backspace => {
-                self.pattern.clear(self.cursor_channel, self.cursor_row);
+                if let Some((ch_min, ch_max, row_min, row_max)) = self.selection_bounds() {
+                    for ch in ch_min..=ch_max {
+                        for row in row_min..=row_max {
+                            self.pattern.clear(ch, row);
+                        }
+                    }
+                    self.clear_selection();
+                } else {
+                    self.pattern.clear(self.cursor_channel, self.cursor_row);
+                }
             }
 
             KeyCode::Tab => {
+                self.clear_selection();
                 self.pattern
                     .set(self.cursor_channel, self.cursor_row, Cell::NoteOff);
                 if self.cursor_row < self.pattern.rows - 1 {
@@ -127,25 +168,33 @@ impl App {
             }
 
             KeyCode::Char('.') => {
+                self.clear_selection();
                 if self.octave < 8 {
                     self.octave += 1;
                 }
             }
             KeyCode::Char(',') => {
+                self.clear_selection();
                 if self.octave > 0 {
                     self.octave -= 1;
                 }
             }
 
             KeyCode::Enter => {
+                self.clear_selection();
                 self.start_playback();
             }
 
             KeyCode::Esc => {
-                self.running = false;
+                if self.selection_anchor.is_some() {
+                    self.clear_selection();
+                } else {
+                    self.running = false;
+                }
             }
 
             other => {
+                self.clear_selection();
                 if let Some(note) = key_to_note(other, self.octave) {
                     self.pattern
                         .set(self.cursor_channel, self.cursor_row, Cell::NoteOn(note));
