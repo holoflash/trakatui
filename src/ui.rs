@@ -286,29 +286,31 @@ fn draw_pattern(ctx: &egui::Context, app: &mut App) {
                 .stroke(Stroke::new(1.0, border_color)),
         )
         .show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new("     ")
-                        .font(FontId::monospace(13.0))
-                        .color(DIM),
-                );
-                for ch in 0..app.pattern.channels {
-                    let waveform = CHANNEL_INSTRUMENTS[ch % CHANNEL_INSTRUMENTS.len()];
-                    let color = INST_COLORS[ch % INST_COLORS.len()];
-                    ui.label(
-                        RichText::new(format!("│ {} ", waveform.name()))
-                            .font(FontId::monospace(13.0))
-                            .color(color)
-                            .strong(),
-                    );
-                }
-            });
-
-            ui.add_space(2.0);
-
             ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new("     ")
+                                .font(FontId::monospace(13.0))
+                                .color(DIM),
+                        );
+                        for ch in 0..app.pattern.channels {
+                            let waveform = CHANNEL_INSTRUMENTS[ch % CHANNEL_INSTRUMENTS.len()];
+                            let color = INST_COLORS[ch % INST_COLORS.len()];
+                            ui.label(
+                                RichText::new(format!("│ {} ", waveform.name()))
+                                    .font(FontId::monospace(13.0))
+                                    .color(color)
+                                    .strong(),
+                            );
+                        }
+                    });
+
+                    ui.add_space(2.0);
+
                     for row in 0..app.pattern.rows {
                         ui.horizontal(|ui| {
                             let row_style = if app.playing && row == app.playback_row {
@@ -335,14 +337,8 @@ fn draw_pattern(ctx: &egui::Context, app: &mut App) {
                                     Cell::Empty => "···".to_string(),
                                 };
 
-                                ui.label(
-                                    RichText::new("│")
-                                        .font(FontId::monospace(13.0))
-                                        .color(BORDER),
-                                );
-
-                                let text = RichText::new(format!(" {} ", cell_text))
-                                    .font(FontId::monospace(13.0));
+                                let display = format!("│ {} ", cell_text);
+                                let text = RichText::new(display).font(FontId::monospace(13.0));
 
                                 let text = if is_cursor {
                                     text.color(CURSOR_TEXT).background_color(CURSOR_BG).strong()
