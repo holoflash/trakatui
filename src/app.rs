@@ -4,7 +4,7 @@ use crossterm::event::KeyCode;
 
 use crate::audio::AudioEngine;
 use crate::keys::key_to_note;
-use crate::pattern::Pattern;
+use crate::pattern::{Cell, Pattern};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -80,6 +80,14 @@ impl App {
                 self.pattern.clear(self.cursor_channel, self.cursor_row);
             }
 
+            KeyCode::Tab => {
+                self.pattern
+                    .set(self.cursor_channel, self.cursor_row, Cell::NoteOff);
+                if self.cursor_row < self.pattern.rows - 1 {
+                    self.cursor_row += 1;
+                }
+            }
+
             KeyCode::Char('+') | KeyCode::Char('=') => {
                 if self.octave < 8 {
                     self.octave += 1;
@@ -102,8 +110,9 @@ impl App {
             other => {
                 if let Some(note) = key_to_note(other, self.octave) {
                     self.pattern
-                        .set(self.cursor_channel, self.cursor_row, Some(note));
-                    self.audio.preview_note(note.frequency());
+                        .set(self.cursor_channel, self.cursor_row, Cell::NoteOn(note));
+                    self.audio
+                        .preview_note(note.frequency(), self.cursor_channel);
                     if self.cursor_row < self.pattern.rows - 1 {
                         self.cursor_row += 1;
                     }

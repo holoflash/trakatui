@@ -2,6 +2,7 @@ mod app;
 mod audio;
 mod keys;
 mod pattern;
+mod synth;
 mod ui;
 
 use std::io;

@@ -24,7 +24,18 @@ impl Note {
     }
 }
 
-pub type Cell = Option<Note>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cell {
+    Empty,
+    NoteOn(Note),
+    NoteOff,
+}
+
+impl Cell {
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Cell::Empty)
+    }
+}
 
 pub struct Pattern {
     pub channels: usize,
@@ -37,7 +48,7 @@ impl Pattern {
         Self {
             channels,
             rows,
-            data: vec![vec![None; rows]; channels],
+            data: vec![vec![Cell::Empty; rows]; channels],
         }
     }
 
@@ -45,12 +56,12 @@ impl Pattern {
         self.data[channel][row]
     }
 
-    pub fn set(&mut self, channel: usize, row: usize, note: Cell) {
-        self.data[channel][row] = note;
+    pub fn set(&mut self, channel: usize, row: usize, cell: Cell) {
+        self.data[channel][row] = cell;
     }
 
     pub fn clear(&mut self, channel: usize, row: usize) {
-        self.data[channel][row] = None;
+        self.data[channel][row] = Cell::Empty;
     }
 }
 
@@ -74,11 +85,13 @@ mod tests {
 
     #[test]
     fn pattern_basics() {
-        let mut pat = Pattern::new(4, 64);
-        assert_eq!(pat.get(0, 0), None);
-        pat.set(0, 0, Some(Note::new(60)));
-        assert_eq!(pat.get(0, 0), Some(Note::new(60)));
+        let mut pat = Pattern::new(4, 16);
+        assert_eq!(pat.get(0, 0), Cell::Empty);
+        pat.set(0, 0, Cell::NoteOn(Note::new(60)));
+        assert_eq!(pat.get(0, 0), Cell::NoteOn(Note::new(60)));
+        pat.set(0, 1, Cell::NoteOff);
+        assert_eq!(pat.get(0, 1), Cell::NoteOff);
         pat.clear(0, 0);
-        assert_eq!(pat.get(0, 0), None);
+        assert_eq!(pat.get(0, 0), Cell::Empty);
     }
 }

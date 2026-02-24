@@ -5,6 +5,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 
 use crate::app::{App, Mode};
+use crate::pattern::Cell;
+use crate::synth::CHANNEL_INSTRUMENTS;
 
 const VISIBLE_ROWS: usize = 16;
 
@@ -90,12 +92,13 @@ fn draw_pattern(frame: &mut Frame, app: &App, area: Rect) {
             .fg(Color::DarkGray)
             .add_modifier(Modifier::DIM),
     )];
+    let inst_colors = [Color::Cyan, Color::Yellow, Color::Red, Color::Magenta];
     for ch in 0..app.pattern.channels {
+        let waveform = CHANNEL_INSTRUMENTS[ch % CHANNEL_INSTRUMENTS.len()];
+        let color = inst_colors[ch % inst_colors.len()];
         header_spans.push(Span::styled(
-            format!("│ CH{} ", ch + 1),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
+            format!("│ {} ", waveform.name()),
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
         ));
     }
     let header_line = Line::from(header_spans);
@@ -124,9 +127,11 @@ fn draw_pattern(frame: &mut Frame, app: &App, area: Rect) {
                 app.mode == Mode::Edit && ch == app.cursor_channel && row == app.cursor_row;
             let is_playback = app.mode == Mode::Play && row == app.playback_row;
 
-            let cell_text = match app.pattern.get(ch, row) {
-                Some(note) => note.name(),
-                None => "···".to_string(),
+            let cell = app.pattern.get(ch, row);
+            let cell_text = match cell {
+                Cell::NoteOn(note) => note.name(),
+                Cell::NoteOff => "OFF".to_string(),
+                Cell::Empty => "···".to_string(),
             };
 
             let style = if is_cursor {
@@ -136,10 +141,12 @@ fn draw_pattern(frame: &mut Frame, app: &App, area: Rect) {
                     .add_modifier(Modifier::BOLD)
             } else if is_playback {
                 Style::default().fg(Color::Black).bg(Color::Green)
-            } else if app.pattern.get(ch, row).is_some() {
-                Style::default().fg(Color::White)
             } else {
-                Style::default().fg(Color::DarkGray)
+                match cell {
+                    Cell::NoteOn(_) => Style::default().fg(Color::White),
+                    Cell::NoteOff => Style::default().fg(Color::Red),
+                    Cell::Empty => Style::default().fg(Color::DarkGray),
+                }
             };
 
             spans.push(Span::styled("│", Style::default().fg(Color::DarkGray)));
@@ -174,7 +181,9 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
         .split(area);
 
     let help_text = match app.mode {
-        Mode::Edit => "SPACE:play  ↑↓←→:move  Z..M/Q..U:note  DEL:clear  +/-:octave  ESC:quit",
+        Mode::Edit => {
+            "SPACE:play  ↑↓←→:move  Z..M/Q..U:note  TAB:off  DEL:clear  +/-:oct  ESC:quit"
+        }
         Mode::Play => "SPACE:stop  ESC:stop",
     };
 
