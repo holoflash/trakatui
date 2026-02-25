@@ -58,6 +58,7 @@ impl eframe::App for PsikatApp {
     }
 }
 
+// Temporary placeholder greek PSI letter ish
 fn make_icon() -> egui::IconData {
     let size = 32u32;
     let mut rgba = vec![0u8; (size * size * 4) as usize];
@@ -74,18 +75,14 @@ fn make_icon() -> egui::IconData {
         rgba[i..i + 4].copy_from_slice(color);
     };
 
-    // Greek Psi (Ψ) letter
-
-    // central vertical stem: rows 4-27, cols 14-17
     for y in 4..28 {
         for x in 14..18 {
             set(&mut rgba, x, y, &fg);
         }
     }
 
-    // left arm of Ψ (curves outward and up)
     let left_arm: &[(u32, u32, u32, u32)] = &[
-        (5, 8, 18, 20), // bottom of left arm
+        (5, 8, 18, 20),
         (5, 8, 16, 18),
         (4, 7, 14, 16),
         (4, 7, 12, 14),
@@ -102,7 +99,6 @@ fn make_icon() -> egui::IconData {
         }
     }
 
-    // right arm of Ψ (mirror of left)
     let right_arm: &[(u32, u32, u32, u32)] = &[
         (24, 27, 18, 20),
         (24, 27, 16, 18),
