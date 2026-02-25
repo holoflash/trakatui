@@ -5,27 +5,26 @@ use crate::pattern::Cell;
 use crate::scale::root_name;
 use crate::synth::CHANNEL_INSTRUMENTS;
 
-const COLOR_LAYOUT_BG_DARK: Color32 = Color32::from_rgb(255, 255, 255);
-const COLOR_LAYOUT_BG_PANEL: Color32 = Color32::from_rgb(192, 192, 192);
-const COLOR_LAYOUT_BG_HEADER: Color32 = Color32::from_rgb(192, 192, 192);
+const COLOR_LAYOUT_BG_DARK: Color32 = Color32::from_rgb(65, 65, 86);
+const COLOR_LAYOUT_BG_PANEL: Color32 = Color32::from_rgb(170, 170, 170);
 
-const COLOR_LAYOUT_BORDER: Color32 = Color32::from_rgb(128, 128, 128);
-const COLOR_LAYOUT_BORDER_ACTIVE: Color32 = Color32::from_rgb(0, 0, 128);
+const COLOR_LAYOUT_BORDER: Color32 = Color32::from_rgb(145, 145, 161);
+const COLOR_LAYOUT_BORDER_ACTIVE: Color32 = Color32::from_rgb(255, 255, 255);
 
-const COLOR_TEXT_DIM: Color32 = Color32::from_rgb(128, 128, 128);
+const COLOR_TEXT_DIM: Color32 = Color32::from_rgb(145, 145, 161);
 const COLOR_TEXT: Color32 = Color32::from_rgb(0, 0, 0);
 
-const COLOR_MODE_EDIT: Color32 = Color32::from_rgb(0, 0, 128);
-const COLOR_MODE_SETTINGS: Color32 = Color32::from_rgb(128, 0, 128);
-const COLOR_MODE_PLAYING: Color32 = Color32::from_rgb(0, 128, 0);
+const COLOR_MODE_EDIT: Color32 = Color32::from_rgb(0, 0, 0);
+const COLOR_MODE_SETTINGS: Color32 = Color32::from_rgb(0, 0, 0);
+const COLOR_MODE_PLAYING: Color32 = Color32::from_rgb(0, 0, 0);
 
-const COLOR_ERROR: Color32 = Color32::from_rgb(255, 0, 0);
-const COLOR_PATTERN_NOTE: Color32 = Color32::from_rgb(0, 0, 128);
-const COLOR_PATTERN_NOTE_OFF: Color32 = Color32::from_rgb(128, 128, 128);
-const COLOR_PATTERN_CURSOR_BG: Color32 = Color32::from_rgb(0, 0, 128);
+const COLOR_ERROR: Color32 = Color32::from_rgb(255, 86, 85);
+const COLOR_PATTERN_NOTE: Color32 = Color32::from_rgb(255, 255, 85);
+const COLOR_PATTERN_NOTE_OFF: Color32 = Color32::from_rgb(255, 86, 85);
+const COLOR_PATTERN_CURSOR_BG: Color32 = Color32::from_rgb(93, 93, 143);
 const COLOR_PATTERN_CURSOR_TEXT: Color32 = Color32::from_rgb(255, 255, 255);
 
-const COLOR_PATTERN_PLAYBACK_HIGHLIGHT: Color32 = Color32::from_rgb(0, 128, 128);
+const COLOR_PATTERN_PLAYBACK_HIGHLIGHT: Color32 = Color32::from_rgb(93, 93, 143);
 const COLOR_PATTERN_PLAYBACK_TEXT: Color32 = Color32::from_rgb(255, 255, 255);
 
 const INST_COLORS: [Color32; 4] = [
@@ -46,7 +45,7 @@ fn draw_header(ctx: &egui::Context, app: &App) {
     egui::TopBottomPanel::top("header")
         .frame(
             egui::Frame::new()
-                .fill(COLOR_LAYOUT_BG_HEADER)
+                .fill(COLOR_LAYOUT_BG_PANEL)
                 .inner_margin(egui::Margin::symmetric(12, 8))
                 .stroke(Stroke::new(1.0, COLOR_LAYOUT_BORDER)),
         )
@@ -104,7 +103,7 @@ fn draw_footer(ctx: &egui::Context, app: &App) {
     egui::TopBottomPanel::bottom("footer")
         .frame(
             egui::Frame::new()
-                .fill(COLOR_LAYOUT_BG_HEADER)
+                .fill(COLOR_LAYOUT_BG_PANEL)
                 .inner_margin(egui::Margin::symmetric(12, 6))
                 .stroke(Stroke::new(1.0, COLOR_LAYOUT_BORDER)),
         )
@@ -365,7 +364,7 @@ fn draw_pattern(ctx: &egui::Context, app: &mut App) {
                                 egui::Color32::TRANSPARENT
                             };
                             ui.label(
-                                RichText::new(format!("  {:02} ", row))
+                                RichText::new(format!("  {:02} ", row + 1))
                                     .font(FontId::monospace(13.0))
                                     .color(row_text_color)
                                     .background_color(row_bg_color)
