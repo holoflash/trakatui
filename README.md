@@ -40,17 +40,6 @@ Download the latest archive for your platform from [**Releases**](https://github
 | Linux                 | `psikat-linux-x86_64.tar.gz`  |
 | Windows               | `psikat-windows-x86_64.zip`   |
 
-```sh
-tar xzf psikat-*.tar.gz
-./psikat
-```
-
-**macOS users:** If you see "Apple could not verify", run this once before launching:
-
-```sh
-xattr -d com.apple.quarantine psikat
-```
-
 ## License
 
 MIT
