@@ -52,7 +52,7 @@ fn draw_header(ctx: &egui::Context, app: &App) {
                 ui.add_space(16.0);
 
                 let (mode_str, mode_color) = if app.playing {
-                    ("▶ PLAYING", GREEN)
+                    ("PLAYING", GREEN)
                 } else {
                     match app.mode {
                         Mode::Edit => ("EDIT", CYAN),
@@ -334,7 +334,8 @@ fn draw_pattern(ctx: &egui::Context, app: &mut App) {
                             );
 
                             for ch in 0..app.pattern.channels {
-                                let is_cursor = app.mode == Mode::Edit
+                                let is_cursor = !app.playing
+                                    && app.mode == Mode::Edit
                                     && ch == app.cursor_channel
                                     && row == app.cursor_row;
                                 let is_playback = app.playing && row == app.playback_row;
