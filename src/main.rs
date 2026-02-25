@@ -24,16 +24,16 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| {
             cc.egui_ctx.set_visuals(egui::Visuals::dark());
-            Ok(Box::new(TrakatuiApp::new()))
+            Ok(Box::new(PsikatApp::new()))
         }),
     )
 }
 
-struct TrakatuiApp {
+struct PsikatApp {
     app: app::App,
 }
 
-impl TrakatuiApp {
+impl PsikatApp {
     fn new() -> Self {
         Self {
             app: app::App::new(),
@@ -41,7 +41,7 @@ impl TrakatuiApp {
     }
 }
 
-impl eframe::App for TrakatuiApp {
+impl eframe::App for PsikatApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let should_close = self.app.handle_input(ctx);
         if should_close {
