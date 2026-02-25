@@ -1,6 +1,6 @@
 # PSIKAT
 
-A music tracker built with Rust.
+A lightweight cross-platform music tracker built with Rust.
 
 ![screenshot](screenshot.png)
 
