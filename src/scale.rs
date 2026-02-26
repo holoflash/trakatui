@@ -54,9 +54,9 @@ pub const LYDIAN_DOMINANT: Scale = Scale {
 };
 
 pub const SCALES: &[Scale] = &[
-    CHROMATIC,
     MAJOR,
     MINOR,
+    CHROMATIC,
     HARMONIC_MINOR,
     MELODIC_MINOR,
     HARMONIC_MAJOR,

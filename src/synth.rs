@@ -23,6 +23,26 @@ impl Waveform {
         }
     }
 
+    pub fn next(&self) -> Self {
+        match self {
+            Waveform::Sine => Waveform::Triangle,
+            Waveform::Triangle => Waveform::Square,
+            Waveform::Square => Waveform::Saw,
+            Waveform::Saw => Waveform::Noise,
+            Waveform::Noise => Waveform::Sine,
+        }
+    }
+
+    pub fn prev(&self) -> Self {
+        match self {
+            Waveform::Sine => Waveform::Noise,
+            Waveform::Triangle => Waveform::Sine,
+            Waveform::Square => Waveform::Triangle,
+            Waveform::Saw => Waveform::Square,
+            Waveform::Noise => Waveform::Saw,
+        }
+    }
+
     fn sample(&self, phase: f32) -> f32 {
         match self {
             Waveform::Sine => (std::f32::consts::TAU * phase).sin(),
@@ -76,12 +96,12 @@ impl Waveform {
 }
 
 pub const CHANNEL_INSTRUMENTS: [Waveform; 8] = [
-    Waveform::Sine,
+    Waveform::Square,
+    Waveform::Square,
+    Waveform::Saw,
+    Waveform::Saw,
     Waveform::Triangle,
-    Waveform::Square,
-    Waveform::Square,
-    Waveform::Saw,
-    Waveform::Saw,
+    Waveform::Sine,
     Waveform::Noise,
     Waveform::Noise,
 ];
@@ -92,6 +112,30 @@ pub struct Envelope {
     pub decay: f32,
     pub sustain: f32,
     pub release: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ChannelSettings {
+    pub waveform: Waveform,
+    pub envelope: Envelope,
+    pub volume: f32,
+}
+
+impl ChannelSettings {
+    pub fn default_for(waveform: Waveform) -> Self {
+        Self {
+            envelope: waveform.default_envelope(),
+            waveform,
+            volume: 0.8,
+        }
+    }
+
+    pub fn defaults() -> Vec<Self> {
+        CHANNEL_INSTRUMENTS
+            .iter()
+            .map(|w| Self::default_for(*w))
+            .collect()
+    }
 }
 
 impl Envelope {
@@ -128,14 +172,20 @@ pub struct SynthSource {
 }
 
 impl SynthSource {
-    pub fn new(waveform: Waveform, frequency: f32, duration: Duration, amplitude: f32) -> Self {
+    pub fn new(
+        waveform: Waveform,
+        frequency: f32,
+        duration: Duration,
+        amplitude: f32,
+        envelope: Envelope,
+    ) -> Self {
         let sample_rate = 44100;
         let note_duration = duration.as_secs_f32();
         let total_samples = (note_duration * sample_rate as f32) as u32;
         Self {
             waveform,
             frequency,
-            envelope: waveform.default_envelope(),
+            envelope,
             sample_rate,
             phase: 0.0,
             elapsed_samples: 0,

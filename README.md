@@ -21,7 +21,7 @@ All features are subject to change without notice before version 1.0.0
 - [x] BPM control
 - [x] Pattern length control
 - [x] Transpose control
-- [ ] A nice color theme (dark and light)
+- [ ] Multiple color themes
 - [ ] More sensible default settings
 - [ ] Stable audio playback
 - [ ] Instrument/Synth editing

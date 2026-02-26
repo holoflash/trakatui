@@ -64,6 +64,17 @@ impl Pattern {
         }
         self.rows = new_rows;
     }
+
+    pub fn gate_rows(&self, channel: usize, row: usize) -> usize {
+        let mut count = 1;
+        for r in (row + 1)..self.rows {
+            match self.data[channel][r] {
+                Cell::NoteOn(_) | Cell::NoteOff => break,
+                Cell::Empty => count += 1,
+            }
+        }
+        count
+    }
 }
 
 #[cfg(test)]

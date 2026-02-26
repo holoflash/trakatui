@@ -1,117 +1,20 @@
-use std::time::{Duration, Instant};
-
 use eframe::egui::{self, Key};
 
-use crate::audio::AudioEngine;
-use crate::export;
 use crate::keys::key_to_note;
-use crate::pattern::{Cell, Pattern};
-use crate::scale::ScaleIndex;
+use crate::pattern::Cell;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mode {
-    Edit,
-    Settings,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SettingsField {
-    Bpm,
-    PatternLength,
-    Subdivision,
-    Scale,
-    Transpose,
-    ExportWav,
-}
-
-impl SettingsField {
-    pub fn next(&self) -> Self {
-        match self {
-            SettingsField::Bpm => SettingsField::Subdivision,
-            SettingsField::Subdivision => SettingsField::PatternLength,
-            SettingsField::PatternLength => SettingsField::Scale,
-            SettingsField::Scale => SettingsField::Transpose,
-            SettingsField::Transpose => SettingsField::ExportWav,
-            SettingsField::ExportWav => SettingsField::Bpm,
-        }
-    }
-
-    pub fn prev(&self) -> Self {
-        match self {
-            SettingsField::Bpm => SettingsField::ExportWav,
-            SettingsField::Subdivision => SettingsField::Bpm,
-            SettingsField::PatternLength => SettingsField::Subdivision,
-            SettingsField::Scale => SettingsField::PatternLength,
-            SettingsField::Transpose => SettingsField::Scale,
-            SettingsField::ExportWav => SettingsField::Transpose,
-        }
-    }
-}
-
-pub struct App {
-    pub pattern: Pattern,
-    pub cursor_channel: usize,
-    pub cursor_row: usize,
-    pub selection_anchor: Option<(usize, usize)>,
-    pub octave: u8,
-    pub mode: Mode,
-    pub playing: bool,
-    pub playback_row: usize,
-    pub bpm: u16,
-    pub subdivision: usize,
-    pub audio: AudioEngine,
-    pub settings_field: SettingsField,
-    pub scale_index: ScaleIndex,
-    pub transpose: i8,
-    pub status_message: Option<String>,
-    last_step_time: Option<Instant>,
-}
+use super::{App, Mode, SettingsField, SynthSettingsField};
 
 impl App {
-    pub fn new() -> Self {
-        Self {
-            pattern: Pattern::new(8, 16),
-            cursor_channel: 0,
-            cursor_row: 0,
-            selection_anchor: None,
-            octave: 4,
-            mode: Mode::Edit,
-            playing: false,
-            playback_row: 0,
-            bpm: 120,
-            subdivision: 4,
-            audio: AudioEngine::new(),
-            settings_field: SettingsField::Bpm,
-            scale_index: ScaleIndex::default(),
-            transpose: 0,
-            status_message: None,
-            last_step_time: None,
-        }
-    }
-
-    pub fn selection_bounds(&self) -> Option<(usize, usize, usize, usize)> {
-        self.selection_anchor.map(|(ach, arow)| {
-            let min_ch = ach.min(self.cursor_channel);
-            let max_ch = ach.max(self.cursor_channel);
-            let min_row = arow.min(self.cursor_row);
-            let max_row = arow.max(self.cursor_row);
-            (min_ch, max_ch, min_row, max_row)
-        })
-    }
-
-    pub fn clear_selection(&mut self) {
-        self.selection_anchor = None;
-    }
-
-    pub fn step_duration(&self) -> Duration {
-        let seconds = 60.0 / self.bpm as f64 / 4.0;
-        Duration::from_secs_f64(seconds)
-    }
-
     pub fn handle_input(&mut self, ctx: &egui::Context) -> bool {
         ctx.input(|input| {
-            if input.key_pressed(Key::Enter) && self.playing {
-                self.stop_playback();
+            if input.key_pressed(Key::Enter) {
+                if self.playing {
+                    self.stop_playback();
+                } else {
+                    self.clear_selection();
+                    self.start_playback();
+                }
                 return false;
             }
 
@@ -121,12 +24,24 @@ impl App {
                     self.handle_settings_input(input);
                     false
                 }
+                Mode::SynthEdit => {
+                    self.handle_synth_input(input);
+                    false
+                }
             }
         })
     }
 
     fn handle_edit_input(&mut self, input: &egui::InputState) -> bool {
         if input.key_pressed(Key::Num2) {
+            self.clear_selection();
+            self.mode = Mode::SynthEdit;
+            self.synth_channel = self.cursor_channel;
+            self.synth_field = SynthSettingsField::Channel;
+            return false;
+        }
+
+        if input.key_pressed(Key::Num3) {
             self.clear_selection();
             self.mode = Mode::Settings;
             self.settings_field = SettingsField::Bpm;
@@ -197,9 +112,6 @@ impl App {
             if self.octave > 0 {
                 self.octave -= 1;
             }
-        } else if input.key_pressed(Key::Enter) {
-            self.clear_selection();
-            self.start_playback();
         } else if input.key_pressed(Key::Escape) {
             if self.selection_anchor.is_some() {
                 self.clear_selection();
@@ -243,8 +155,13 @@ impl App {
                     if let Some(note) = key_to_note(k, self.octave, scale, self.transpose) {
                         self.pattern
                             .set(self.cursor_channel, self.cursor_row, Cell::NoteOn(note));
-                        self.audio
-                            .preview_note(note.frequency(), self.cursor_channel);
+                        if !self.playing {
+                            self.audio.preview_note(
+                                note.frequency(),
+                                self.cursor_channel,
+                                &self.channel_settings,
+                            );
+                        }
                         self.clear_selection();
                         if self.cursor_row < self.pattern.rows - 1 {
                             self.cursor_row += 1;
@@ -267,6 +184,10 @@ impl App {
         } else if input.key_pressed(Key::Num1) {
             self.mode = Mode::Edit;
         } else if input.key_pressed(Key::Num2) {
+            self.mode = Mode::SynthEdit;
+            self.synth_channel = self.cursor_channel;
+            self.synth_field = SynthSettingsField::Channel;
+        } else if input.key_pressed(Key::Num3) {
         } else if input.key_pressed(Key::ArrowDown) {
             self.settings_field = self.settings_field.next();
         } else if input.key_pressed(Key::ArrowUp) {
@@ -289,7 +210,6 @@ impl App {
                 SettingsField::Transpose => {
                     self.transpose = (self.transpose + 1).min(12);
                 }
-                SettingsField::ExportWav => {}
             }
         } else if input.key_pressed(Key::ArrowLeft) {
             match self.settings_field {
@@ -312,58 +232,92 @@ impl App {
                 SettingsField::Transpose => {
                     self.transpose = (self.transpose - 1).max(-12);
                 }
-                SettingsField::ExportWav => {}
-            }
-        } else if input.key_pressed(Key::Enter) {
-            if self.settings_field == SettingsField::ExportWav {
-                self.do_export();
             }
         }
     }
 
-    fn do_export(&mut self) {
-        let path = std::path::PathBuf::from("output.wav");
-        match export::export_wav(&self.pattern, self.bpm, &path) {
-            Ok(()) => {
-                self.status_message = Some(format!("Exported to {}", path.display()));
+    fn handle_synth_input(&mut self, input: &egui::InputState) {
+        let ch = self.synth_channel;
+
+        if input.key_pressed(Key::Escape) {
+            if self.playing {
+                self.stop_playback();
             }
-            Err(e) => {
-                self.status_message = Some(format!("Export failed: {}", e));
+            self.mode = Mode::Edit;
+        } else if input.key_pressed(Key::Num1) {
+            self.mode = Mode::Edit;
+        } else if input.key_pressed(Key::Num2) {
+        } else if input.key_pressed(Key::Num3) {
+            self.mode = Mode::Settings;
+            self.settings_field = SettingsField::Bpm;
+        } else if input.key_pressed(Key::ArrowDown) {
+            self.synth_field = self.synth_field.next();
+        } else if input.key_pressed(Key::ArrowUp) {
+            self.synth_field = self.synth_field.prev();
+        } else if input.key_pressed(Key::ArrowRight) {
+            match self.synth_field {
+                SynthSettingsField::Channel => {
+                    self.synth_channel = (self.synth_channel + 1) % self.pattern.channels;
+                }
+                SynthSettingsField::Waveform => {
+                    let cs = &mut self.channel_settings[ch];
+                    cs.waveform = cs.waveform.next();
+                }
+                SynthSettingsField::Attack => {
+                    let cs = &mut self.channel_settings[ch];
+                    cs.envelope.attack = (cs.envelope.attack + 0.005).min(2.0);
+                }
+                SynthSettingsField::Decay => {
+                    let cs = &mut self.channel_settings[ch];
+                    cs.envelope.decay = (cs.envelope.decay + 0.005).min(2.0);
+                }
+                SynthSettingsField::Sustain => {
+                    let cs = &mut self.channel_settings[ch];
+                    cs.envelope.sustain = (cs.envelope.sustain + 0.05).min(1.0);
+                }
+                SynthSettingsField::Release => {
+                    let cs = &mut self.channel_settings[ch];
+                    cs.envelope.release = (cs.envelope.release + 0.005).min(2.0);
+                }
+                SynthSettingsField::Volume => {
+                    let cs = &mut self.channel_settings[ch];
+                    cs.volume = (cs.volume + 0.05).min(1.0);
+                }
             }
-        }
-    }
-
-    fn start_playback(&mut self) {
-        self.playing = true;
-        self.playback_row = 0;
-        self.last_step_time = Some(Instant::now());
-        self.audio.play_row(&self.pattern, 0, self.step_duration());
-    }
-
-    fn stop_playback(&mut self) {
-        self.playing = false;
-        self.last_step_time = None;
-    }
-
-    pub fn tick(&mut self) {
-        if !self.playing {
-            return;
-        }
-
-        if let Some(last) = self.last_step_time {
-            if last.elapsed() >= self.step_duration() {
-                self.playback_row = (self.playback_row + 1) % self.pattern.rows;
-                self.audio
-                    .play_row(&self.pattern, self.playback_row, self.step_duration());
-                self.last_step_time = Some(Instant::now());
+        } else if input.key_pressed(Key::ArrowLeft) {
+            match self.synth_field {
+                SynthSettingsField::Channel => {
+                    self.synth_channel = if self.synth_channel == 0 {
+                        self.pattern.channels - 1
+                    } else {
+                        self.synth_channel - 1
+                    };
+                }
+                SynthSettingsField::Waveform => {
+                    let cs = &mut self.channel_settings[ch];
+                    cs.waveform = cs.waveform.prev();
+                }
+                SynthSettingsField::Attack => {
+                    let cs = &mut self.channel_settings[ch];
+                    cs.envelope.attack = (cs.envelope.attack - 0.005).max(0.001);
+                }
+                SynthSettingsField::Decay => {
+                    let cs = &mut self.channel_settings[ch];
+                    cs.envelope.decay = (cs.envelope.decay - 0.005).max(0.001);
+                }
+                SynthSettingsField::Sustain => {
+                    let cs = &mut self.channel_settings[ch];
+                    cs.envelope.sustain = (cs.envelope.sustain - 0.05).max(0.0);
+                }
+                SynthSettingsField::Release => {
+                    let cs = &mut self.channel_settings[ch];
+                    cs.envelope.release = (cs.envelope.release - 0.005).max(0.001);
+                }
+                SynthSettingsField::Volume => {
+                    let cs = &mut self.channel_settings[ch];
+                    cs.volume = (cs.volume - 0.05).max(0.0);
+                }
             }
-        }
-    }
-
-    pub fn set_cursor(&mut self, channel: usize, row: usize) {
-        if channel < self.pattern.channels && row < self.pattern.rows {
-            self.cursor_channel = channel;
-            self.cursor_row = row;
         }
     }
 }
