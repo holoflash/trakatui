@@ -67,7 +67,6 @@ pub fn draw_pattern(ctx: &egui::Context, app: &mut App) {
                             });
                         }
                     });
-
                     ui.add_space(2.0);
 
                     for row in 0..app.pattern.rows {

@@ -74,6 +74,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                         .fill(COLOR_LAYOUT_BORDER)
                         .stroke(Stroke::new(1.0, COLOR_LAYOUT_BORDER_ACTIVE)),
                     );
+                    btn.surrender_focus();
                     if btn.clicked() {
                         app.do_export();
                     }

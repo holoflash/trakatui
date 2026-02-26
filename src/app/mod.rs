@@ -170,11 +170,11 @@ impl App {
 
     pub(crate) fn start_playback(&mut self) {
         self.playing = true;
-        self.playback_row = 0;
+        self.playback_row = self.cursor_row;
         self.last_step_time = Some(Instant::now());
         self.audio.play_row(
             &self.pattern,
-            0,
+            self.playback_row,
             self.step_duration(),
             &self.channel_settings,
         );
