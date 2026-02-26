@@ -17,7 +17,7 @@ pub fn draw_footer(ctx: &egui::Context, app: &App) {
             ui.horizontal(|ui| {
                 ui.centered_and_justified(|ui| {
                     ui.label(
-                        RichText::new("1:pattern  2:synth  3:settings  Z..P:note  TAB:off  DEL:clear  ,/.:oct  ENTER:play/stop")
+                        RichText::new("1:pattern  2:synth  3:settings  Z..P:note  TAB:off  DEL:clear  ,/.:oct  ENTER:play/stop SPACE:play from cursor")
                             .font(FontId::monospace(12.0))
                             .color(COLOR_TEXT_DIM),
                     );

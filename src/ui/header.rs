@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use eframe::egui::{self, FontId, RichText, Stroke};
 
 use crate::app::{App, Mode};
@@ -6,6 +8,17 @@ use crate::scale::root_name;
 use super::*;
 
 pub fn draw_header(ctx: &egui::Context, app: &mut App) {
+    let raw_peak = f32::from_bits(app.peak_level.swap(0, Ordering::Relaxed));
+    let target = raw_peak.min(1.5);
+    if target > app.display_peak {
+        app.display_peak = target;
+    } else {
+        app.display_peak *= 0.88;
+        if app.display_peak < 0.001 {
+            app.display_peak = 0.0;
+        }
+    }
+
     egui::TopBottomPanel::top("header")
         .frame(
             egui::Frame::new()
@@ -64,6 +77,10 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                         .color(COLOR_MODE_PLAYING),
                 );
 
+                ui.add_space(16.0);
+
+                draw_volume_control(ui, app);
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let btn = ui.add(
                         egui::Button::new(
@@ -81,4 +98,103 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                 });
             });
         });
+}
+
+fn draw_volume_control(ui: &mut egui::Ui, app: &mut App) {
+    let db_text = if app.master_volume_db <= -60.0 {
+        "-∞".to_string()
+    } else {
+        format!("{:+.1}", app.master_volume_db)
+    };
+
+    ui.label(
+        RichText::new("VOL")
+            .font(FontId::monospace(10.0))
+            .color(COLOR_TEXT_DIM),
+    );
+
+    let slider_response = ui.add(
+        egui::Slider::new(&mut app.master_volume_db, -60.0..=6.0)
+            .show_value(false)
+            .logarithmic(false)
+            .step_by(0.1)
+            .clamping(egui::SliderClamping::Always),
+    );
+    slider_response.surrender_focus();
+    if slider_response.double_clicked() {
+        app.master_volume_db = 0.0;
+    }
+
+    ui.label(
+        RichText::new(format!("{:>5}dB", db_text))
+            .font(FontId::monospace(11.0))
+            .color(if app.master_volume_db > 0.0 {
+                COLOR_ERROR
+            } else {
+                COLOR_TEXT
+            }),
+    );
+
+    ui.add_space(4.0);
+
+    let meter_width = 80.0;
+    let meter_height = 14.0;
+    let (rect, _response) = ui.allocate_exact_size(
+        egui::Vec2::new(meter_width, meter_height),
+        egui::Sense::hover(),
+    );
+
+    let painter = ui.painter();
+
+    painter.rect_filled(rect, 2.0, egui::Color32::from_rgb(20, 18, 32));
+
+    let peak = app.display_peak;
+    if peak > 0.001 {
+        let peak_db = 20.0 * peak.log10();
+        let meter_min_db = -60.0_f32;
+        let meter_max_db = 6.0_f32;
+        let normalized = ((peak_db - meter_min_db) / (meter_max_db - meter_min_db)).clamp(0.0, 1.0);
+
+        let fill_width = rect.width() * normalized;
+        let fill_rect =
+            egui::Rect::from_min_size(rect.min, egui::Vec2::new(fill_width, meter_height));
+
+        let color = if peak_db < -12.0 {
+            egui::Color32::from_rgb(60, 190, 80)
+        } else if peak_db < -3.0 {
+            let t = ((peak_db + 12.0) / 9.0).clamp(0.0, 1.0);
+            egui::Color32::from_rgb(
+                (60.0 + t * 180.0) as u8,
+                (190.0 + t * 30.0) as u8,
+                (80.0 - t * 50.0) as u8,
+            )
+        } else if peak_db < 0.0 {
+            let t = ((peak_db + 3.0) / 3.0).clamp(0.0, 1.0);
+            egui::Color32::from_rgb((240.0 + t * 15.0) as u8, (220.0 - t * 120.0) as u8, 30)
+        } else {
+            egui::Color32::from_rgb(255, 60, 50)
+        };
+
+        painter.rect_filled(fill_rect, 2.0, color);
+
+        let zero_db_x =
+            rect.min.x + rect.width() * ((0.0 - meter_min_db) / (meter_max_db - meter_min_db));
+        painter.line_segment(
+            [
+                egui::Pos2::new(zero_db_x, rect.min.y),
+                egui::Pos2::new(zero_db_x, rect.max.y),
+            ],
+            Stroke::new(
+                1.0,
+                egui::Color32::from_rgba_premultiplied(255, 255, 255, 80),
+            ),
+        );
+    }
+
+    painter.rect_stroke(
+        rect,
+        2.0,
+        Stroke::new(1.0, COLOR_LAYOUT_BORDER),
+        egui::StrokeKind::Outside,
+    );
 }

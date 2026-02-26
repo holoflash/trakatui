@@ -1,5 +1,7 @@
 pub mod input;
 
+use std::sync::Arc;
+use std::sync::atomic::AtomicU32;
 use std::time::{Duration, Instant};
 
 use crate::audio::AudioEngine;
@@ -102,11 +104,16 @@ pub struct App {
     pub transpose: i8,
     pub status_message: Option<String>,
     pub synth_channel: usize,
+    pub master_volume_db: f32,
+    pub peak_level: Arc<AtomicU32>,
+    pub display_peak: f32,
     pub(crate) last_step_time: Option<Instant>,
 }
 
 impl App {
     pub fn new() -> Self {
+        let audio = AudioEngine::new();
+        let peak_level = audio.peak_level.clone();
         Self {
             pattern: Pattern::new(8, 16),
             cursor_channel: 0,
@@ -118,7 +125,7 @@ impl App {
             playback_row: 0,
             bpm: 120,
             subdivision: 4,
-            audio: AudioEngine::new(),
+            audio,
             settings_field: SettingsField::Bpm,
             synth_field: SynthSettingsField::Waveform,
             channel_settings: ChannelSettings::defaults(),
@@ -126,6 +133,9 @@ impl App {
             transpose: 0,
             status_message: None,
             synth_channel: 0,
+            master_volume_db: 0.0,
+            peak_level,
+            display_peak: 0.0,
             last_step_time: None,
         }
     }
@@ -149,6 +159,14 @@ impl App {
         Duration::from_secs_f64(seconds)
     }
 
+    pub fn master_volume_linear(&self) -> f32 {
+        if self.master_volume_db <= -60.0 {
+            0.0
+        } else {
+            10.0_f32.powf(self.master_volume_db / 20.0)
+        }
+    }
+
     pub fn do_export(&mut self) {
         let mut dialog = rfd::FileDialog::new()
             .add_filter("WAV Audio", &["wav"])
@@ -164,19 +182,26 @@ impl App {
             if path.extension().is_none() {
                 path.set_extension("wav");
             }
-            let _ = export::export_wav(&self.pattern, self.bpm, &path, &self.channel_settings);
+            let _ = export::export_wav(
+                &self.pattern,
+                self.bpm,
+                &path,
+                &self.channel_settings,
+                self.master_volume_linear(),
+            );
         }
     }
 
-    pub(crate) fn start_playback(&mut self) {
+    pub(crate) fn start_playback(&mut self, from_cursor: bool) {
         self.playing = true;
-        self.playback_row = self.cursor_row;
+        self.playback_row = if from_cursor { self.cursor_row } else { 0 };
         self.last_step_time = Some(Instant::now());
         self.audio.play_row(
             &self.pattern,
             self.playback_row,
             self.step_duration(),
             &self.channel_settings,
+            self.master_volume_linear(),
         );
     }
 
@@ -199,6 +224,7 @@ impl App {
                     self.playback_row,
                     self.step_duration(),
                     &self.channel_settings,
+                    self.master_volume_linear(),
                 );
                 self.last_step_time = Some(Instant::now());
             }

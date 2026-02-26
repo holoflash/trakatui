@@ -8,12 +8,12 @@ use super::{App, Mode, SettingsField, SynthSettingsField};
 impl App {
     pub fn handle_input(&mut self, ctx: &egui::Context) -> bool {
         ctx.input(|input| {
-            if input.key_pressed(Key::Enter) {
+            if input.key_pressed(Key::Enter) || input.key_pressed(Key::Space) {
                 if self.playing {
                     self.stop_playback();
                 } else {
                     self.clear_selection();
-                    self.start_playback();
+                    self.start_playback(input.key_pressed(Key::Space));
                 }
                 return false;
             }
@@ -160,6 +160,7 @@ impl App {
                                 note.frequency(),
                                 self.cursor_channel,
                                 &self.channel_settings,
+                                self.master_volume_linear(),
                             );
                         }
                         self.clear_selection();

@@ -14,6 +14,7 @@ pub fn export_wav(
     bpm: u16,
     path: &Path,
     channel_settings: &[ChannelSettings],
+    master_volume: f32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let step_duration_secs = 60.0 / bpm as f64 / 4.0;
     let step_duration = Duration::from_secs_f64(step_duration_secs);
@@ -58,7 +59,8 @@ pub fn export_wav(
 
     let mut writer = WavWriter::create(path, spec)?;
     for &sample in &buffer {
-        let clamped = sample.clamp(-1.0, 1.0);
+        let scaled = sample * master_volume;
+        let clamped = scaled.clamp(-1.0, 1.0);
         let value = (clamped * i16::MAX as f32) as i16;
         writer.write_sample(value)?;
     }
