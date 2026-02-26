@@ -23,6 +23,7 @@ fn main() -> eframe::Result<()> {
         "psikat",
         options,
         Box::new(|cc| {
+            egui_extras::install_image_loaders(&cc.egui_ctx);
             cc.egui_ctx.set_visuals(egui::Visuals::dark());
             Ok(Box::new(PsikatApp::new()))
         }),

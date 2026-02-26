@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 eframe = "0.31"
+egui_extras = { version = "0.31", features = ["image"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
 fastrand = "2.3.0"
 hound = "3.5.1"
 rodio = "0.22.1"

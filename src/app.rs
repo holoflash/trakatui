@@ -49,6 +49,7 @@ pub struct App {
     pub pattern: Pattern,
     pub cursor_channel: usize,
     pub cursor_row: usize,
+    pub selection_anchor: Option<(usize, usize)>,
     pub octave: u8,
     pub mode: Mode,
     pub playing: bool,
@@ -68,6 +69,7 @@ impl App {
             pattern: Pattern::new(8, 16),
             cursor_channel: 0,
             cursor_row: 0,
+            selection_anchor: None,
             octave: 4,
             mode: Mode::Edit,
             playing: false,
@@ -80,6 +82,20 @@ impl App {
             status_message: None,
             last_step_time: None,
         }
+    }
+
+    pub fn selection_bounds(&self) -> Option<(usize, usize, usize, usize)> {
+        self.selection_anchor.map(|(ach, arow)| {
+            let min_ch = ach.min(self.cursor_channel);
+            let max_ch = ach.max(self.cursor_channel);
+            let min_row = arow.min(self.cursor_row);
+            let max_row = arow.max(self.cursor_row);
+            (min_ch, max_ch, min_row, max_row)
+        })
+    }
+
+    pub fn clear_selection(&mut self) {
+        self.selection_anchor = None;
     }
 
     pub fn step_duration(&self) -> Duration {
@@ -106,9 +122,23 @@ impl App {
 
     fn handle_edit_input(&mut self, input: &egui::InputState) -> bool {
         if input.key_pressed(Key::Num2) {
+            self.clear_selection();
             self.mode = Mode::Settings;
             self.settings_field = SettingsField::Bpm;
             return false;
+        }
+
+        let alt = input.modifiers.alt;
+
+        let arrow_pressed = input.key_pressed(Key::ArrowUp)
+            || input.key_pressed(Key::ArrowDown)
+            || input.key_pressed(Key::ArrowLeft)
+            || input.key_pressed(Key::ArrowRight);
+
+        if arrow_pressed && alt && self.selection_anchor.is_none() {
+            self.selection_anchor = Some((self.cursor_channel, self.cursor_row));
+        } else if arrow_pressed && !alt {
+            self.clear_selection();
         }
 
         if input.key_pressed(Key::ArrowUp) {
@@ -136,9 +166,19 @@ impl App {
                 self.cursor_channel = 0;
             }
         } else if input.key_pressed(Key::Delete) || input.key_pressed(Key::Backspace) {
-            self.pattern.clear(self.cursor_channel, self.cursor_row);
-            self.cursor_row = self.cursor_row.wrapping_sub(1) % self.pattern.rows;
+            if let Some((min_ch, max_ch, min_row, max_row)) = self.selection_bounds() {
+                for ch in min_ch..=max_ch {
+                    for row in min_row..=max_row {
+                        self.pattern.clear(ch, row);
+                    }
+                }
+                self.clear_selection();
+            } else {
+                self.pattern.clear(self.cursor_channel, self.cursor_row);
+                self.cursor_row = self.cursor_row.wrapping_sub(1) % self.pattern.rows;
+            }
         } else if input.key_pressed(Key::Tab) {
+            self.clear_selection();
             self.pattern
                 .set(self.cursor_channel, self.cursor_row, Cell::NoteOff);
             if self.cursor_row < self.pattern.rows - 1 {
@@ -153,12 +193,15 @@ impl App {
                 self.octave -= 1;
             }
         } else if input.key_pressed(Key::Enter) {
+            self.clear_selection();
             self.start_playback();
         } else if input.key_pressed(Key::Escape) {
-            if self.playing {
+            if self.selection_anchor.is_some() {
+                self.clear_selection();
+            } else if self.playing {
                 self.stop_playback();
             } else {
-                return true; // signal close
+                return true;
             }
         } else {
             let note_keys = [
@@ -197,6 +240,7 @@ impl App {
                             .set(self.cursor_channel, self.cursor_row, Cell::NoteOn(note));
                         self.audio
                             .preview_note(note.frequency(), self.cursor_channel);
+                        self.clear_selection();
                         if self.cursor_row < self.pattern.rows - 1 {
                             self.cursor_row += 1;
                         }

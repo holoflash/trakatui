@@ -27,6 +27,9 @@ const COLOR_PATTERN_CURSOR_TEXT: Color32 = Color32::from_rgb(255, 255, 255);
 const COLOR_PATTERN_PLAYBACK_HIGHLIGHT: Color32 = Color32::from_rgb(93, 93, 143);
 const COLOR_PATTERN_PLAYBACK_TEXT: Color32 = Color32::from_rgb(255, 255, 255);
 
+const COLOR_PATTERN_SELECTION_BG: Color32 = Color32::from_rgb(80, 80, 140);
+const COLOR_PATTERN_SELECTION_TEXT: Color32 = Color32::from_rgb(220, 220, 255);
+
 const INST_COLORS: [Color32; 4] = [
     COLOR_PATTERN_NOTE,
     COLOR_PATTERN_NOTE,
@@ -52,14 +55,11 @@ fn draw_header(ctx: &egui::Context, app: &App) {
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.add_space(4.0);
-                ui.label(
-                    RichText::new("PSIKAT")
-                        .font(FontId::monospace(24.0))
-                        .color(COLOR_MODE_EDIT)
-                        .strong(),
+                ui.add(
+                    egui::Image::new(egui::include_image!("../psikat.png"))
+                        .fit_to_exact_size(egui::Vec2::new(48.0, 48.0)),
                 );
-                ui.add_space(16.0);
-
+                ui.add_space(4.0);
                 let (mode_str, mode_color) = if app.playing {
                     ("PLAYING", COLOR_MODE_PLAYING)
                 } else {
@@ -110,7 +110,7 @@ fn draw_footer(ctx: &egui::Context, app: &App) {
         .show(ctx, |ui| {
             let help_text = match app.mode {
                 Mode::Edit => {
-                    "Z..M/Q..U:note  TAB:off  DEL:clear  ,/.:oct  ENTER:play  2:settings  ESC:quit"
+                    "Z..M/Q..U:note  TAB:off  DEL:clear  ,/.:oct  ALT+\u{2190}\u{2191}\u{2192}\u{2193}:select  ENTER:play  2:settings"
                 }
                 _ if app.playing => "ENTER:stop  ESC:stop",
                 Mode::Settings => {
@@ -371,11 +371,20 @@ fn draw_pattern(ctx: &egui::Context, app: &mut App) {
                                     .strong(),
                             );
 
+                            let sel_bounds = app.selection_bounds();
+
                             for ch in 0..app.pattern.channels {
                                 let is_cursor = app.mode == Mode::Edit
                                     && ch == app.cursor_channel
                                     && row == app.cursor_row;
                                 let is_playback = app.playing && row == app.playback_row;
+                                let is_selected =
+                                    sel_bounds.is_some_and(|(min_ch, max_ch, min_row, max_row)| {
+                                        ch >= min_ch
+                                            && ch <= max_ch
+                                            && row >= min_row
+                                            && row <= max_row
+                                    });
                                 let cell = app.pattern.get(ch, row);
                                 let cell_text = match cell {
                                     Cell::NoteOn(note) => note.name(),
@@ -392,6 +401,11 @@ fn draw_pattern(ctx: &egui::Context, app: &mut App) {
                                         .color(COLOR_PATTERN_CURSOR_TEXT)
                                         .background_color(COLOR_PATTERN_CURSOR_BG)
                                         .strong()
+                                } else if is_selected {
+                                    RichText::new(&cell_text)
+                                        .font(FontId::monospace(13.0))
+                                        .color(COLOR_PATTERN_SELECTION_TEXT)
+                                        .background_color(COLOR_PATTERN_SELECTION_BG)
                                 } else if is_playback {
                                     RichText::new(&cell_text)
                                         .font(FontId::monospace(13.0))
