@@ -199,7 +199,7 @@ impl App {
                     self.subdivision = (self.subdivision + 1).min(64);
                 }
                 SettingsField::Bpm => {
-                    self.bpm = (self.bpm + 1).min(300);
+                    self.bpm = (self.bpm + 1).min(666);
                 }
                 SettingsField::PatternLength => {
                     let new_len = (self.pattern.rows + 1).min(128);
