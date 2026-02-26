@@ -4,7 +4,9 @@ A lightweight cross-platform music tracker built with Rust.
 
 ![screenshot](screenshot.png)
 
-## 🚧 WORK IN PROGRESS
+## 🚧 UNDER DEVELOPMENT
+
+All features are subject to change without notice before version 1.0.0
 
 ### TODO
 
@@ -28,17 +30,6 @@ A lightweight cross-platform music tracker built with Rust.
 - [ ] Keybinding settings
 - [ ] Save/load from file
 - [ ] Sampler channel
-
-## Install
-
-Download the latest archive for your platform from [**Releases**](https://github.com/holoflash/psikat/releases/latest) and extract it:
-
-| Platform              | File                          |
-| --------------------- | ----------------------------- |
-| macOS (Apple Silicon) | `psikat-macos-aarch64.tar.gz` |
-| macOS (Intel)         | `psikat-macos-x86_64.tar.gz`  |
-| Linux                 | `psikat-linux-x86_64.tar.gz`  |
-| Windows               | `psikat-windows-x86_64.zip`   |
 
 ## License
 
