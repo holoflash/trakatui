@@ -216,18 +216,18 @@ impl App {
             return;
         }
 
-        if let Some(last) = self.last_step_time {
-            if last.elapsed() >= self.step_duration() {
-                self.playback_row = (self.playback_row + 1) % self.pattern.rows;
-                self.audio.play_row(
-                    &self.pattern,
-                    self.playback_row,
-                    self.step_duration(),
-                    &self.channel_settings,
-                    self.master_volume_linear(),
-                );
-                self.last_step_time = Some(Instant::now());
-            }
+        if let Some(last) = self.last_step_time
+            && last.elapsed() >= self.step_duration()
+        {
+            self.playback_row = (self.playback_row + 1) % self.pattern.rows;
+            self.audio.play_row(
+                &self.pattern,
+                self.playback_row,
+                self.step_duration(),
+                &self.channel_settings,
+                self.master_volume_linear(),
+            );
+            self.last_step_time = Some(Instant::now());
         }
     }
 

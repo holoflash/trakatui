@@ -65,7 +65,7 @@ pub const SCALES: &[Scale] = &[
     LYDIAN_DOMINANT,
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScaleIndex(pub usize);
 
 impl ScaleIndex {
@@ -83,12 +83,6 @@ impl ScaleIndex {
         } else {
             ScaleIndex(self.0 - 1)
         }
-    }
-}
-
-impl Default for ScaleIndex {
-    fn default() -> Self {
-        ScaleIndex(0)
     }
 }
 
