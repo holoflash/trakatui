@@ -18,6 +18,7 @@ pub const COLOR_LAYOUT_BORDER_ACTIVE: Color32 = Color32::from_rgb(210, 185, 120)
 
 pub const COLOR_TEXT_DIM: Color32 = Color32::from_rgb(110, 95, 70);
 pub const COLOR_TEXT: Color32 = Color32::from_rgb(210, 190, 140);
+pub const COLOR_TEXT_ACTIVE: Color32 = Color32::from_rgb(255, 250, 235);
 
 pub const COLOR_MODE_EDIT: Color32 = Color32::from_rgb(210, 190, 140);
 pub const COLOR_MODE_SETTINGS: Color32 = Color32::from_rgb(190, 170, 120);
@@ -35,13 +36,6 @@ pub const COLOR_PATTERN_PLAYBACK_TEXT: Color32 = Color32::from_rgb(255, 245, 220
 
 pub const COLOR_PATTERN_SELECTION_BG: Color32 = Color32::from_rgb(100, 85, 50);
 pub const COLOR_PATTERN_SELECTION_TEXT: Color32 = Color32::from_rgb(245, 235, 200);
-
-pub const INST_COLORS: [Color32; 4] = [
-    COLOR_PATTERN_NOTE,
-    COLOR_PATTERN_NOTE,
-    COLOR_PATTERN_NOTE,
-    COLOR_PATTERN_NOTE,
-];
 
 pub fn draw(ctx: &egui::Context, app: &mut App) {
     header::draw_header(ctx, app);

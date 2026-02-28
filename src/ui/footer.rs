@@ -1,4 +1,4 @@
-use eframe::egui::{self, FontId, RichText, Stroke};
+use eframe::egui::{self, FontId, RichText};
 
 use crate::app::App;
 
@@ -11,7 +11,6 @@ pub fn draw_footer(ctx: &egui::Context, app: &App) {
             egui::Frame::new()
                 .fill(COLOR_LAYOUT_BG_PANEL)
                 .inner_margin(egui::Margin::symmetric(12, 6))
-                .stroke(Stroke::new(1.0, COLOR_LAYOUT_BORDER)),
         )
         .show(ctx, |ui| {
             ui.horizontal(|ui| {

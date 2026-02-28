@@ -7,14 +7,14 @@ mod scale;
 mod synth;
 mod ui;
 
-use eframe::egui;
+use eframe::egui::{self, Color32, Stroke};
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1100.0, 700.0])
             .with_min_inner_size([800.0, 500.0])
-            .with_title("PSIKAT")
+            .with_title("psikat")
             .with_icon(make_icon()),
         ..Default::default()
     };
@@ -24,7 +24,14 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            cc.egui_ctx.set_visuals(egui::Visuals::dark());
+            cc.egui_ctx.set_visuals(egui::Visuals {
+                selection: egui::style::Selection {
+                    bg_fill: Color32::TRANSPARENT,
+                    stroke: Stroke::NONE,
+                },
+
+                ..Default::default()
+            });
             Ok(Box::new(PsikatApp::new()))
         }),
     )

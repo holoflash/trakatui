@@ -6,15 +6,9 @@ use super::widgets::settings_row;
 use super::*;
 
 pub fn draw_instrument(ui: &mut egui::Ui, app: &App) {
-    let synth_border = if app.mode == Mode::SynthEdit {
-        COLOR_LAYOUT_BORDER_ACTIVE
-    } else {
-        COLOR_LAYOUT_BORDER
-    };
     egui::Frame::new()
         .fill(COLOR_LAYOUT_BG_PANEL)
         .inner_margin(egui::Margin::symmetric(12, 10))
-        .stroke(Stroke::new(1.0, synth_border))
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
             let ch = app.synth_channel;

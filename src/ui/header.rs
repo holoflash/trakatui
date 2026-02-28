@@ -23,8 +23,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
         .frame(
             egui::Frame::new()
                 .fill(COLOR_LAYOUT_BG_PANEL)
-                .inner_margin(egui::Margin::symmetric(12, 8))
-                .stroke(Stroke::new(1.0, COLOR_LAYOUT_BORDER)),
+                .inner_margin(egui::Margin::symmetric(12, 8)),
         )
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -32,22 +31,6 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                 ui.add(
                     egui::Image::new(egui::include_image!("../../psikat.png"))
                         .fit_to_exact_size(egui::Vec2::new(48.0, 48.0)),
-                );
-                ui.add_space(4.0);
-                let (mode_str, mode_color) = if app.playing {
-                    ("PLAYING", COLOR_MODE_PLAYING)
-                } else {
-                    match app.mode {
-                        Mode::Edit => ("EDIT", COLOR_MODE_EDIT),
-                        Mode::Settings => ("SETTINGS", COLOR_MODE_SETTINGS),
-                        Mode::SynthEdit => ("SYNTH", COLOR_MODE_SETTINGS),
-                    }
-                };
-                ui.label(
-                    RichText::new(format!("[{}]", mode_str))
-                        .font(FontId::monospace(14.0))
-                        .color(mode_color)
-                        .strong(),
                 );
                 ui.add_space(16.0);
                 ui.label(
@@ -81,6 +64,23 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
 
                 draw_volume_control(ui, app);
 
+                ui.add_space(4.0);
+                let (mode_str, mode_color) = if app.playing {
+                    ("PLAYING", COLOR_MODE_PLAYING)
+                } else {
+                    match app.mode {
+                        Mode::Edit => ("EDIT", COLOR_MODE_EDIT),
+                        Mode::Settings => ("SETTINGS", COLOR_MODE_SETTINGS),
+                        Mode::SynthEdit => ("SYNTH", COLOR_MODE_SETTINGS),
+                    }
+                };
+                ui.label(
+                    RichText::new(format!("[{}]", mode_str))
+                        .font(FontId::monospace(14.0))
+                        .color(mode_color)
+                        .strong(),
+                );
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let btn = ui.add(
                         egui::Button::new(
@@ -101,12 +101,6 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
 }
 
 fn draw_volume_control(ui: &mut egui::Ui, app: &mut App) {
-    let db_text = if app.master_volume_db <= -60.0 {
-        "-∞".to_string()
-    } else {
-        format!("{:+.1}", app.master_volume_db)
-    };
-
     ui.label(
         RichText::new("VOL")
             .font(FontId::monospace(10.0))
@@ -115,8 +109,6 @@ fn draw_volume_control(ui: &mut egui::Ui, app: &mut App) {
 
     let slider_response = ui.add(
         egui::Slider::new(&mut app.master_volume_db, -60.0..=6.0)
-            .show_value(false)
-            .logarithmic(false)
             .step_by(0.1)
             .clamping(egui::SliderClamping::Always),
     );
@@ -125,20 +117,10 @@ fn draw_volume_control(ui: &mut egui::Ui, app: &mut App) {
         app.master_volume_db = 0.0;
     }
 
-    ui.label(
-        RichText::new(format!("{:>5}dB", db_text))
-            .font(FontId::monospace(11.0))
-            .color(if app.master_volume_db > 0.0 {
-                COLOR_ERROR
-            } else {
-                COLOR_TEXT
-            }),
-    );
-
     ui.add_space(4.0);
 
     let meter_width = 80.0;
-    let meter_height = 14.0;
+    let meter_height = 13.0;
     let (rect, _response) = ui.allocate_exact_size(
         egui::Vec2::new(meter_width, meter_height),
         egui::Sense::hover(),
@@ -190,11 +172,4 @@ fn draw_volume_control(ui: &mut egui::Ui, app: &mut App) {
             ),
         );
     }
-
-    painter.rect_stroke(
-        rect,
-        2.0,
-        Stroke::new(1.0, COLOR_LAYOUT_BORDER),
-        egui::StrokeKind::Outside,
-    );
 }

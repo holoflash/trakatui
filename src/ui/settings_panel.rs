@@ -6,15 +6,9 @@ use super::widgets::settings_row;
 use super::*;
 
 pub fn draw_settings(ui: &mut egui::Ui, app: &App) {
-    let settings_border = if app.mode == Mode::Settings {
-        COLOR_LAYOUT_BORDER_ACTIVE
-    } else {
-        COLOR_LAYOUT_BORDER
-    };
     egui::Frame::new()
         .fill(COLOR_LAYOUT_BG_PANEL)
         .inner_margin(egui::Margin::symmetric(12, 10))
-        .stroke(Stroke::new(1.0, settings_border))
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
             ui.label(
