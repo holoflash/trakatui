@@ -7,7 +7,7 @@ use crate::scale::root_name;
 
 use super::{
     COLOR_LAYOUT_BG_PANEL, COLOR_LAYOUT_BORDER, COLOR_LAYOUT_BORDER_ACTIVE, COLOR_MODE_EDIT,
-    COLOR_MODE_PLAYING, COLOR_MODE_SETTINGS, COLOR_PATTERN_CURSOR_TEXT, COLOR_TEXT, COLOR_TEXT_DIM,
+    COLOR_MODE_PLAYING, COLOR_MODE_SETTINGS, COLOR_PATTERN_CURSOR_TEXT, COLOR_TEXT_DIM,
 };
 
 const fn clamp_to_u8(v: f32) -> u8 {
@@ -40,38 +40,18 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                         .fit_to_exact_size(egui::Vec2::new(48.0, 48.0)),
                 );
                 ui.add_space(16.0);
-                ui.label(
-                    RichText::new(format!("Oct:{}", app.cursor.octave))
-                        .font(FontId::monospace(13.0))
-                        .color(COLOR_MODE_SETTINGS),
-                );
-                ui.add_space(12.0);
-                ui.label(
-                    RichText::new(format!("BPM:{}", app.project.bpm))
-                        .font(FontId::monospace(13.0))
-                        .color(COLOR_TEXT),
-                );
-                ui.add_space(12.0);
-                ui.label(
-                    RichText::new(format!("Division:{}", app.project.subdivision))
-                        .font(FontId::monospace(13.0))
-                        .color(COLOR_TEXT),
-                );
-                ui.add_space(12.0);
-
                 let root = root_name(app.project.transpose);
                 let scale_name = app.project.scale_index.scale().name;
                 ui.label(
-                    RichText::new(format!("{root} {scale_name}"))
+                    RichText::new(format!("{root}-{} {scale_name}", app.cursor.octave))
                         .font(FontId::monospace(13.0))
                         .color(COLOR_MODE_PLAYING),
                 );
 
                 ui.add_space(16.0);
-
                 draw_volume_control(ui, app);
+                ui.add_space(16.0);
 
-                ui.add_space(4.0);
                 let (mode_str, mode_color) = if app.playback.playing {
                     ("PLAYING", COLOR_MODE_PLAYING)
                 } else {

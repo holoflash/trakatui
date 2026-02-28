@@ -32,6 +32,13 @@ pub fn draw_settings(ui: &mut egui::Ui, app: &App) {
             let sa = app.mode == Mode::Settings;
             settings_row(
                 ui,
+                "Scale",
+                app.project.scale_index.scale().name,
+                sa && app.settings_field == SettingsField::Scale,
+            );
+            ui.add_space(6.0);
+            settings_row(
+                ui,
                 "BPM",
                 &app.project.bpm.to_string(),
                 sa && app.settings_field == SettingsField::Bpm,
@@ -56,13 +63,6 @@ pub fn draw_settings(ui: &mut egui::Ui, app: &App) {
                 "Length",
                 &app.project.pattern.rows.to_string(),
                 sa && app.settings_field == SettingsField::PatternLength,
-            );
-            ui.add_space(6.0);
-            settings_row(
-                ui,
-                "Scale",
-                app.project.scale_index.scale().name,
-                sa && app.settings_field == SettingsField::Scale,
             );
             ui.add_space(6.0);
             settings_row(

@@ -54,33 +54,33 @@ impl SynthSettingsField {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsField {
+    Scale,
     Bpm,
     PatternLength,
     Subdivision,
     Step,
-    Scale,
     Transpose,
 }
 
 impl SettingsField {
     pub const fn next(self) -> Self {
         match self {
+            Self::Scale => Self::Bpm,
             Self::Bpm => Self::Subdivision,
             Self::Subdivision => Self::Step,
             Self::Step => Self::PatternLength,
             Self::PatternLength => Self::Scale,
-            Self::Scale => Self::Transpose,
-            Self::Transpose => Self::Bpm,
+            Self::Transpose => Self::Scale,
         }
     }
 
     pub const fn prev(self) -> Self {
         match self {
-            Self::Bpm => Self::Transpose,
+            Self::Scale => Self::Transpose,
+            Self::Bpm => Self::Scale,
             Self::Subdivision => Self::Bpm,
             Self::Step => Self::Subdivision,
             Self::PatternLength => Self::Step,
-            Self::Scale => Self::PatternLength,
             Self::Transpose => Self::Scale,
         }
     }

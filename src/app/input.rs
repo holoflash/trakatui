@@ -57,7 +57,7 @@ impl App {
         if actions.contains(&Action::SwitchToSettings) {
             self.clear_selection();
             self.mode = Mode::Settings;
-            self.settings_field = SettingsField::Bpm;
+            self.settings_field = SettingsField::Scale;
             return false;
         }
 
