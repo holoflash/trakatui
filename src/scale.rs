@@ -129,19 +129,19 @@ pub const SCALES: &[Scale] = &[
 pub struct ScaleIndex(pub usize);
 
 impl ScaleIndex {
-    pub fn scale(&self) -> &'static Scale {
+    pub fn scale(self) -> &'static Scale {
         &SCALES[self.0]
     }
 
-    pub fn next(&self) -> Self {
-        ScaleIndex((self.0 + 1) % SCALES.len())
+    pub const fn next(self) -> Self {
+        Self((self.0 + 1) % SCALES.len())
     }
 
-    pub fn prev(&self) -> Self {
+    pub const fn prev(self) -> Self {
         if self.0 == 0 {
-            ScaleIndex(SCALES.len() - 1)
+            Self(SCALES.len() - 1)
         } else {
-            ScaleIndex(self.0 - 1)
+            Self(self.0 - 1)
         }
     }
 }
@@ -150,7 +150,7 @@ const NOTE_NAMES: [&str; 12] = [
     "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
 ];
 
-pub fn root_name(transpose: i8) -> &'static str {
+pub const fn root_name(transpose: i8) -> &'static str {
     NOTE_NAMES[transpose.rem_euclid(12) as usize]
 }
 
@@ -160,6 +160,7 @@ pub fn map_key_index_to_midi(key_index: u8, octave: u8, scale: &Scale, transpose
     let scale_degree = key_index % len;
     let semitone = scale.intervals[scale_degree as usize];
 
-    let midi = ((octave + scale_octave) as i16 + 1) * 12 + semitone as i16 + transpose as i16;
+    let midi =
+        (i16::from(octave + scale_octave) + 1) * 12 + i16::from(semitone) + i16::from(transpose);
     midi.clamp(0, 127) as u8
 }

@@ -1,11 +1,11 @@
 use eframe::egui::{self, FontId, RichText};
 
-use super::*;
+use super::{COLOR_TEXT, COLOR_TEXT_DIM, COLOR_MODE_SETTINGS};
 
 pub fn settings_row(ui: &mut egui::Ui, label: &str, value: &str, active: bool) {
     ui.horizontal(|ui| {
         ui.label(
-            RichText::new(format!("{:<10}", label))
+            RichText::new(format!("{label:<10}"))
                 .font(FontId::monospace(13.0))
                 .color(COLOR_TEXT),
         );
@@ -27,7 +27,7 @@ pub fn settings_row(ui: &mut egui::Ui, label: &str, value: &str, active: bool) {
                 .color(arrow_color),
         );
         ui.label(
-            RichText::new(format!("{:^9}", value))
+            RichText::new(format!("{value:^9}"))
                 .font(FontId::monospace(13.0))
                 .color(value_color)
                 .strong(),

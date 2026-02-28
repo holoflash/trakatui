@@ -43,7 +43,7 @@ impl KeyCombo {
         self
     }
 
-    pub fn label(&self) -> String {
+    pub fn label(self) -> String {
         let mut parts = Vec::new();
         if self.ctrl {
             parts.push("Cmd");
@@ -367,7 +367,7 @@ impl KeyBindings {
     }
 }
 
-fn key_name(key: Key) -> &'static str {
+const fn key_name(key: Key) -> &'static str {
     match key {
         Key::ArrowUp => "↑",
         Key::ArrowDown => "↓",

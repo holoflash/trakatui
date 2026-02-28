@@ -30,7 +30,7 @@ pub enum SynthSettingsField {
 }
 
 impl SynthSettingsField {
-    pub fn next(&self) -> Self {
+    pub const fn next(self) -> Self {
         match self {
             Self::Channel => Self::Waveform,
             Self::Waveform => Self::Attack,
@@ -42,7 +42,7 @@ impl SynthSettingsField {
         }
     }
 
-    pub fn prev(&self) -> Self {
+    pub const fn prev(self) -> Self {
         match self {
             Self::Channel => Self::Volume,
             Self::Waveform => Self::Channel,
@@ -66,25 +66,25 @@ pub enum SettingsField {
 }
 
 impl SettingsField {
-    pub fn next(&self) -> Self {
+    pub const fn next(self) -> Self {
         match self {
-            SettingsField::Bpm => SettingsField::Subdivision,
-            SettingsField::Subdivision => SettingsField::Step,
-            SettingsField::Step => SettingsField::PatternLength,
-            SettingsField::PatternLength => SettingsField::Scale,
-            SettingsField::Scale => SettingsField::Transpose,
-            SettingsField::Transpose => SettingsField::Bpm,
+            Self::Bpm => Self::Subdivision,
+            Self::Subdivision => Self::Step,
+            Self::Step => Self::PatternLength,
+            Self::PatternLength => Self::Scale,
+            Self::Scale => Self::Transpose,
+            Self::Transpose => Self::Bpm,
         }
     }
 
-    pub fn prev(&self) -> Self {
+    pub const fn prev(self) -> Self {
         match self {
-            SettingsField::Bpm => SettingsField::Transpose,
-            SettingsField::Subdivision => SettingsField::Bpm,
-            SettingsField::Step => SettingsField::Subdivision,
-            SettingsField::PatternLength => SettingsField::Step,
-            SettingsField::Scale => SettingsField::PatternLength,
-            SettingsField::Transpose => SettingsField::Scale,
+            Self::Bpm => Self::Transpose,
+            Self::Subdivision => Self::Bpm,
+            Self::Step => Self::Subdivision,
+            Self::PatternLength => Self::Step,
+            Self::Scale => Self::PatternLength,
+            Self::Transpose => Self::Scale,
         }
     }
 }
@@ -160,12 +160,12 @@ impl App {
         })
     }
 
-    pub fn clear_selection(&mut self) {
+    pub const fn clear_selection(&mut self) {
         self.selection_anchor = None;
     }
 
     pub fn step_duration(&self) -> Duration {
-        let seconds = 60.0 / self.bpm as f64 / 4.0;
+        let seconds = 60.0 / f64::from(self.bpm) / 4.0;
         Duration::from_secs_f64(seconds)
     }
 
@@ -177,7 +177,7 @@ impl App {
         }
     }
 
-    pub fn do_export(&mut self) {
+    pub fn do_export(&self) {
         let mut dialog = rfd::FileDialog::new()
             .add_filter("WAV Audio", &["wav"])
             .set_file_name("new_song.wav")
@@ -241,7 +241,7 @@ impl App {
         }
     }
 
-    pub fn set_cursor(&mut self, channel: usize, row: usize) {
+    pub const fn set_cursor(&mut self, channel: usize, row: usize) {
         if channel < self.pattern.channels && row < self.pattern.rows {
             self.cursor_channel = channel;
             self.cursor_row = row;

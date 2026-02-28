@@ -16,9 +16,9 @@ pub fn export_wav(
     channel_settings: &[ChannelSettings],
     master_volume: f32,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let step_duration_secs = 60.0 / bpm as f64 / 4.0;
+    let step_duration_secs = 60.0 / f64::from(bpm) / 4.0;
     let step_duration = Duration::from_secs_f64(step_duration_secs);
-    let samples_per_step = (step_duration_secs * SAMPLE_RATE as f64) as usize;
+    let samples_per_step = (step_duration_secs * f64::from(SAMPLE_RATE)) as usize;
     let total_samples = samples_per_step * pattern.rows;
 
     let spec = WavSpec {
@@ -61,7 +61,7 @@ pub fn export_wav(
     for &sample in &buffer {
         let scaled = sample * master_volume;
         let clamped = scaled.clamp(-1.0, 1.0);
-        let value = (clamped * i16::MAX as f32) as i16;
+        let value = (clamped * f32::from(i16::MAX)) as i16;
         writer.write_sample(value)?;
     }
 

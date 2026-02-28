@@ -2,9 +2,9 @@ use eframe::egui::{self, Stroke};
 
 use crate::app::App;
 
-use super::*;
+use super::{COLOR_LAYOUT_BG_DARK, instrument, settings_panel};
 
-pub fn draw_sidebar(ctx: &egui::Context, app: &mut App) {
+pub fn draw_sidebar(ctx: &egui::Context, app: &App) {
     egui::SidePanel::right("sidebar")
         .resizable(false)
         .exact_width(280.0)

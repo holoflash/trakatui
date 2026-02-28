@@ -3,7 +3,7 @@ use eframe::egui::{self, FontId, RichText, Stroke, Vec2};
 use crate::app::{App, Mode, SettingsField};
 
 use super::widgets::settings_row;
-use super::*;
+use super::{COLOR_LAYOUT_BG_PANEL, COLOR_MODE_SETTINGS, COLOR_TEXT_DIM, COLOR_MODE_PLAYING, COLOR_ERROR};
 
 pub fn draw_settings(ui: &mut egui::Ui, app: &App) {
     egui::Frame::new()

@@ -14,7 +14,7 @@ pub struct PeakMonitor<S> {
 }
 
 impl<S> PeakMonitor<S> {
-    pub fn new(source: S, peak: Arc<AtomicU32>) -> Self {
+    pub const fn new(source: S, peak: Arc<AtomicU32>) -> Self {
         Self { source, peak }
     }
 }

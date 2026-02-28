@@ -10,7 +10,7 @@ impl Note {
         }
     }
 
-    pub fn name(&self) -> String {
+    pub fn name(self) -> String {
         let names = [
             "C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-",
         ];
@@ -19,8 +19,8 @@ impl Note {
         format!("{}{}", names[note_idx], octave)
     }
 
-    pub fn frequency(&self) -> f32 {
-        440.0 * 2.0_f32.powf((self.pitch as f32 - 69.0) / 12.0)
+    pub fn frequency(self) -> f32 {
+        440.0 * ((f32::from(self.pitch) - 69.0) / 12.0).exp2()
     }
 }
 
@@ -60,7 +60,7 @@ impl Pattern {
 
     pub fn resize(&mut self, new_rows: usize) {
         if new_rows > self.data[0].len() {
-            for ch in self.data.iter_mut() {
+            for ch in &mut self.data {
                 ch.resize(new_rows, Cell::Empty);
             }
         }

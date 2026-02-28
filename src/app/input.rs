@@ -81,16 +81,16 @@ impl App {
             };
 
             if let Some((min_ch, max_ch, min_row, max_row)) = self.selection_bounds() {
-                let new_min_row = min_row as isize + dr;
-                let new_max_row = max_row as isize + dr;
-                let new_min_ch = min_ch as isize + dc;
-                let new_max_ch = max_ch as isize + dc;
+                let in_bounds = min_row.checked_add_signed(dr).is_some()
+                    && max_row
+                        .checked_add_signed(dr)
+                        .is_some_and(|r| r < self.pattern.rows)
+                    && min_ch.checked_add_signed(dc).is_some()
+                    && max_ch
+                        .checked_add_signed(dc)
+                        .is_some_and(|c| c < self.pattern.channels);
 
-                if new_min_row >= 0
-                    && new_max_row < self.pattern.rows as isize
-                    && new_min_ch >= 0
-                    && new_max_ch < self.pattern.channels as isize
-                {
+                if in_bounds {
                     let mut cells = Vec::new();
                     for ch in min_ch..=max_ch {
                         for row in min_row..=max_row {
@@ -99,34 +99,28 @@ impl App {
                         }
                     }
                     for (ch, row, cell) in cells {
-                        let new_ch = (ch as isize + dc) as usize;
-                        let new_row = (row as isize + dr) as usize;
+                        let new_ch = ch.checked_add_signed(dc).unwrap();
+                        let new_row = row.checked_add_signed(dr).unwrap();
                         self.pattern.set(new_ch, new_row, cell);
                     }
-                    self.cursor_channel = (self.cursor_channel as isize + dc) as usize;
-                    self.cursor_row = (self.cursor_row as isize + dr) as usize;
+                    self.cursor_channel = self.cursor_channel.checked_add_signed(dc).unwrap();
+                    self.cursor_row = self.cursor_row.checked_add_signed(dr).unwrap();
                     if let Some((ach, arow)) = self.selection_anchor.as_mut() {
-                        *ach = (*ach as isize + dc) as usize;
-                        *arow = (*arow as isize + dr) as usize;
+                        *ach = ach.checked_add_signed(dc).unwrap();
+                        *arow = arow.checked_add_signed(dr).unwrap();
                     }
                 }
-            } else {
-                let new_row = self.cursor_row as isize + dr;
-                let new_ch = self.cursor_channel as isize + dc;
-
-                if new_row >= 0
-                    && new_row < self.pattern.rows as isize
-                    && new_ch >= 0
-                    && new_ch < self.pattern.channels as isize
-                {
-                    let cell = self.pattern.get(self.cursor_channel, self.cursor_row);
-                    self.pattern.clear(self.cursor_channel, self.cursor_row);
-                    let new_ch = new_ch as usize;
-                    let new_row = new_row as usize;
-                    self.pattern.set(new_ch, new_row, cell);
-                    self.cursor_channel = new_ch;
-                    self.cursor_row = new_row;
-                }
+            } else if let (Some(new_row), Some(new_ch)) = (
+                self.cursor_row.checked_add_signed(dr),
+                self.cursor_channel.checked_add_signed(dc),
+            ) && new_row < self.pattern.rows
+                && new_ch < self.pattern.channels
+            {
+                let cell = self.pattern.get(self.cursor_channel, self.cursor_row);
+                self.pattern.clear(self.cursor_channel, self.cursor_row);
+                self.pattern.set(new_ch, new_row, cell);
+                self.cursor_channel = new_ch;
+                self.cursor_row = new_row;
             }
             return false;
         }
@@ -290,16 +284,16 @@ impl App {
             }
 
             let can_transpose = if delta > 0 {
-                max_pitch.is_some_and(|p| (p as i16 + delta) <= 127)
+                max_pitch.is_some_and(|p| (i16::from(p) + delta) <= 127)
             } else {
-                min_pitch.is_some_and(|p| (p as i16 + delta) >= 0)
+                min_pitch.is_some_and(|p| (i16::from(p) + delta) >= 0)
             };
 
             if can_transpose {
                 for ch in min_ch..=max_ch {
                     for row in min_row..=max_row {
                         if let Cell::NoteOn(note) = self.pattern.get(ch, row) {
-                            let new_pitch = (note.pitch as i16 + delta) as u8;
+                            let new_pitch = (i16::from(note.pitch) + delta) as u8;
                             self.pattern.set(
                                 ch,
                                 row,

@@ -5,7 +5,10 @@ use eframe::egui::{self, FontId, RichText, Stroke};
 use crate::app::{App, Mode};
 use crate::scale::root_name;
 
-use super::*;
+use super::{
+    COLOR_LAYOUT_BG_PANEL, COLOR_LAYOUT_BORDER, COLOR_LAYOUT_BORDER_ACTIVE, COLOR_MODE_EDIT,
+    COLOR_MODE_PLAYING, COLOR_MODE_SETTINGS, COLOR_PATTERN_CURSOR_TEXT, COLOR_TEXT, COLOR_TEXT_DIM,
+};
 
 pub fn draw_header(ctx: &egui::Context, app: &mut App) {
     let raw_peak = f32::from_bits(app.peak_level.swap(0, Ordering::Relaxed));
@@ -55,7 +58,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                 let root = root_name(app.transpose);
                 let scale_name = app.scale_index.scale().name;
                 ui.label(
-                    RichText::new(format!("{} {}", root, scale_name))
+                    RichText::new(format!("{root} {scale_name}"))
                         .font(FontId::monospace(13.0))
                         .color(COLOR_MODE_PLAYING),
                 );
@@ -75,7 +78,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                     }
                 };
                 ui.label(
-                    RichText::new(format!("[{}]", mode_str))
+                    RichText::new(format!("[{mode_str}]"))
                         .font(FontId::monospace(14.0))
                         .color(mode_color)
                         .strong(),
@@ -175,8 +178,10 @@ fn draw_volume_control(ui: &mut egui::Ui, app: &mut App) {
 
         painter.rect_filled(fill_rect, 2.0, color);
 
-        let zero_db_x =
-            rect.min.x + rect.width() * ((0.0 - meter_min_db) / (meter_max_db - meter_min_db));
+        let zero_db_x = rect.width().mul_add(
+            (0.0 - meter_min_db) / (meter_max_db - meter_min_db),
+            rect.min.x,
+        );
         painter.line_segment(
             [
                 egui::Pos2::new(zero_db_x, rect.min.y),

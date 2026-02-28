@@ -2,7 +2,10 @@ use eframe::egui::{self, FontId, RichText};
 
 use crate::app::App;
 
-use super::*;
+use super::{
+    COLOR_LAYOUT_BG_PANEL, COLOR_LAYOUT_BORDER_ACTIVE, COLOR_MODE_PLAYING, COLOR_TEXT,
+    COLOR_TEXT_ACTIVE, COLOR_TEXT_DIM,
+};
 
 pub fn draw_controls_modal(ctx: &egui::Context, app: &mut App) {
     if !app.show_controls_modal {
@@ -10,6 +13,7 @@ pub fn draw_controls_modal(ctx: &egui::Context, app: &mut App) {
     }
 
     egui::Window::new("Controls")
+        .open(&mut app.show_controls_modal)
         .collapsible(false)
         .resizable(false)
         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
@@ -54,7 +58,7 @@ pub fn draw_controls_modal(ctx: &egui::Context, app: &mut App) {
                             );
                             ui.add_space(4.0);
 
-                            egui::Grid::new(format!("controls_grid_{}", cat))
+                            egui::Grid::new(format!("controls_grid_{cat}"))
                                 .num_columns(3)
                                 .striped(true)
                                 .spacing([12.0, 4.0])

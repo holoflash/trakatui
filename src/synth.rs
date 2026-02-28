@@ -13,79 +13,79 @@ pub enum Waveform {
 }
 
 impl Waveform {
-    pub fn name(&self) -> &'static str {
+    pub const fn name(self) -> &'static str {
         match self {
-            Waveform::Sine => "SIN",
-            Waveform::Triangle => "TRI",
-            Waveform::Square => "SQR",
-            Waveform::Saw => "SAW",
-            Waveform::Noise => "NOS",
+            Self::Sine => "SIN",
+            Self::Triangle => "TRI",
+            Self::Square => "SQR",
+            Self::Saw => "SAW",
+            Self::Noise => "NOS",
         }
     }
 
-    pub fn next(&self) -> Self {
+    pub const fn next(self) -> Self {
         match self {
-            Waveform::Sine => Waveform::Triangle,
-            Waveform::Triangle => Waveform::Square,
-            Waveform::Square => Waveform::Saw,
-            Waveform::Saw => Waveform::Noise,
-            Waveform::Noise => Waveform::Sine,
+            Self::Sine => Self::Triangle,
+            Self::Triangle => Self::Square,
+            Self::Square => Self::Saw,
+            Self::Saw => Self::Noise,
+            Self::Noise => Self::Sine,
         }
     }
 
-    pub fn prev(&self) -> Self {
+    pub const fn prev(self) -> Self {
         match self {
-            Waveform::Sine => Waveform::Noise,
-            Waveform::Triangle => Waveform::Sine,
-            Waveform::Square => Waveform::Triangle,
-            Waveform::Saw => Waveform::Square,
-            Waveform::Noise => Waveform::Saw,
+            Self::Sine => Self::Noise,
+            Self::Triangle => Self::Sine,
+            Self::Square => Self::Triangle,
+            Self::Saw => Self::Square,
+            Self::Noise => Self::Saw,
         }
     }
 
-    fn sample(&self, phase: f32) -> f32 {
+    fn sample(self, phase: f32) -> f32 {
         match self {
-            Waveform::Sine => (std::f32::consts::TAU * phase).sin(),
-            Waveform::Triangle => 4.0 * (phase - (phase + 0.5).floor()).abs() - 1.0,
-            Waveform::Square => {
+            Self::Sine => (std::f32::consts::TAU * phase).sin(),
+            Self::Triangle => 4.0f32.mul_add((phase - (phase + 0.5).floor()).abs(), -1.0),
+            Self::Square => {
                 if phase < 0.5 {
                     1.0
                 } else {
                     -1.0
                 }
             }
-            Waveform::Saw => 2.0 * phase - 1.0,
-            Waveform::Noise => fastrand::f32() * 2.0 - 1.0,
+            Self::Saw => 2.0f32.mul_add(phase, -1.0),
+            Self::Noise => fastrand::f32().mul_add(2.0, -1.0),
         }
     }
 
-    pub fn default_envelope(&self) -> Envelope {
+    pub const fn default_envelope(self) -> Envelope {
         match self {
-            Waveform::Sine => Envelope {
+            Self::Sine => Envelope {
                 attack: 0.01,
                 decay: 0.05,
                 sustain: 0.9,
                 release: 0.05,
             },
-            Waveform::Triangle => Envelope {
+            Self::Triangle => Envelope {
                 attack: 0.01,
                 decay: 0.06,
                 sustain: 0.9,
                 release: 0.05,
             },
-            Waveform::Square => Envelope {
+            Self::Square => Envelope {
                 attack: 0.005,
                 decay: 0.1,
                 sustain: 0.8,
                 release: 0.03,
             },
-            Waveform::Saw => Envelope {
+            Self::Saw => Envelope {
                 attack: 0.005,
                 decay: 0.08,
                 sustain: 0.6,
                 release: 0.04,
             },
-            Waveform::Noise => Envelope {
+            Self::Noise => Envelope {
                 attack: 0.001,
                 decay: 0.05,
                 sustain: 0.3,
@@ -122,7 +122,7 @@ pub struct ChannelSettings {
 }
 
 impl ChannelSettings {
-    pub fn default_for(waveform: Waveform) -> Self {
+    pub const fn default_for(waveform: Waveform) -> Self {
         Self {
             envelope: waveform.default_envelope(),
             waveform,
@@ -146,7 +146,7 @@ impl Envelope {
             time / self.attack
         } else if time < self.attack + self.decay {
             let decay_progress = (time - self.attack) / self.decay;
-            1.0 - (1.0 - self.sustain) * decay_progress
+            (1.0 - self.sustain).mul_add(-decay_progress, 1.0)
         } else if time < release_start {
             self.sustain
         } else if time < note_duration {
@@ -192,7 +192,7 @@ impl SynthSource {
             total_samples,
             note_duration,
             amplitude,
-            noise_held: fastrand::f32() * 2.0 - 1.0,
+            noise_held: fastrand::f32().mul_add(2.0, -1.0),
         }
     }
 }
@@ -217,7 +217,7 @@ impl Iterator for SynthSource {
         if self.phase >= 1.0 {
             self.phase -= 1.0;
             if self.waveform == Waveform::Noise {
-                self.noise_held = fastrand::f32() * 2.0 - 1.0;
+                self.noise_held = fastrand::f32().mul_add(2.0, -1.0);
             }
         }
 
