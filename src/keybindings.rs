@@ -104,6 +104,9 @@ pub enum Action {
     SettingsDown,
     SettingsIncrease,
     SettingsDecrease,
+
+    // Sampler
+    LoadSample,
 }
 
 #[derive(Debug, Clone)]
@@ -361,6 +364,14 @@ impl KeyBindings {
                     title: "Decrease value",
                     description: "Decrease the value of the selected field",
                     category: "Settings",
+                },
+                // Sampler
+                Binding {
+                    action: Action::LoadSample,
+                    combo: KeyCombo::new(Key::L),
+                    title: "Load sample",
+                    description: "Open file dialog to load a sample",
+                    category: "Sampler",
                 },
             ],
         }

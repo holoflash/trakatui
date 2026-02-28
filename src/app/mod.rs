@@ -19,6 +19,7 @@ pub enum Mode {
 pub enum SynthSettingsField {
     Channel,
     Waveform,
+    Sample,
     Attack,
     Decay,
     Sustain,
@@ -30,7 +31,8 @@ impl SynthSettingsField {
     pub const fn next(self) -> Self {
         match self {
             Self::Channel => Self::Waveform,
-            Self::Waveform => Self::Attack,
+            Self::Waveform => Self::Sample,
+            Self::Sample => Self::Attack,
             Self::Attack => Self::Decay,
             Self::Decay => Self::Sustain,
             Self::Sustain => Self::Release,
@@ -43,7 +45,8 @@ impl SynthSettingsField {
         match self {
             Self::Channel => Self::Volume,
             Self::Waveform => Self::Channel,
-            Self::Attack => Self::Waveform,
+            Self::Sample => Self::Waveform,
+            Self::Attack => Self::Sample,
             Self::Decay => Self::Attack,
             Self::Sustain => Self::Decay,
             Self::Release => Self::Sustain,
@@ -137,7 +140,7 @@ impl App {
             audio,
             peak_level,
             display_peak: 0.0,
-            settings_field: SettingsField::Bpm,
+            settings_field: SettingsField::Scale,
             synth_field: SynthSettingsField::Waveform,
             status_message: None,
             keybindings: KeyBindings::defaults(),

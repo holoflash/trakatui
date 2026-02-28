@@ -1,4 +1,5 @@
 pub mod export;
+pub mod sampler;
 pub mod synth;
 
 use std::num::NonZero;
@@ -8,8 +9,9 @@ use std::time::Duration;
 
 use rodio::{DeviceSinkBuilder, MixerDeviceSink, Source};
 
-use crate::project::{Cell, ChannelSettings, Pattern, parse_pitch_bend};
+use crate::project::{Cell, ChannelSettings, Pattern, Waveform, parse_pitch_bend};
 
+use sampler::SamplerSource;
 use synth::{PitchBendControl, SynthSource};
 
 struct ChannelPlayState {
@@ -137,33 +139,53 @@ impl AudioEngine {
                     let note_duration =
                         gate_duration + Duration::from_secs_f32(cs.envelope.release);
 
-                    let bend = Arc::new(PitchBendControl::new());
+                    if cs.waveform == Waveform::Sampler {
+                        if let Some(ref sample_data) = cs.sample_data {
+                            let source = SamplerSource::new(
+                                Arc::clone(sample_data),
+                                note.frequency(),
+                                note_duration,
+                                cs.volume,
+                                cs.envelope,
+                            );
+                            let monitored = PeakMonitor::new(
+                                source.amplify(master_volume),
+                                self.peak_level.clone(),
+                            );
+                            self.device_sink.as_ref().unwrap().mixer().add(monitored);
+                        }
+                        state.note_start_row = Some(row);
+                    } else {
+                        let bend = Arc::new(PitchBendControl::new());
 
-                    if let Some(cmd) = effect
-                        && let Some((semitones, steps)) = parse_pitch_bend(cmd)
-                        && semitones != 0
-                        && steps > 0
-                    {
-                        let target = note.frequency() * (f32::from(semitones) / 12.0).exp2();
-                        let dur = step_duration.as_secs_f32() * f32::from(steps);
-                        bend.set(target, 0.0, dur);
+                        if let Some(cmd) = effect
+                            && let Some((semitones, steps)) = parse_pitch_bend(cmd)
+                            && semitones != 0
+                            && steps > 0
+                        {
+                            let target = note.frequency() * (f32::from(semitones) / 12.0).exp2();
+                            let dur = step_duration.as_secs_f32() * f32::from(steps);
+                            bend.set(target, 0.0, dur);
+                        }
+
+                        let source = SynthSource::new(
+                            cs.waveform,
+                            note.frequency(),
+                            note_duration,
+                            cs.volume,
+                            cs.envelope,
+                            bend.clone(),
+                        );
+                        let monitored = PeakMonitor::new(
+                            source.amplify(master_volume),
+                            self.peak_level.clone(),
+                        );
+                        self.device_sink.as_ref().unwrap().mixer().add(monitored);
+
+                        state.bend_control = bend;
+                        state.base_freq = note.frequency();
+                        state.note_start_row = Some(row);
                     }
-
-                    let source = SynthSource::new(
-                        cs.waveform,
-                        note.frequency(),
-                        note_duration,
-                        cs.volume,
-                        cs.envelope,
-                        bend.clone(),
-                    );
-                    let monitored =
-                        PeakMonitor::new(source.amplify(master_volume), self.peak_level.clone());
-                    self.device_sink.as_ref().unwrap().mixer().add(monitored);
-
-                    state.bend_control = bend;
-                    state.base_freq = note.frequency();
-                    state.note_start_row = Some(row);
                 }
                 Cell::NoteOff => {
                     state.note_start_row = None;
@@ -194,16 +216,33 @@ impl AudioEngine {
         master_volume: f32,
     ) {
         let cs = &channel_settings[channel % channel_settings.len()];
-        let bend = Arc::new(PitchBendControl::new());
-        let source = SynthSource::new(
-            cs.waveform,
-            freq,
-            Duration::from_millis(200),
-            cs.volume * 0.8,
-            cs.envelope,
-            bend,
-        );
-        let monitored = PeakMonitor::new(source.amplify(master_volume), self.peak_level.clone());
-        self.device_sink.as_ref().unwrap().mixer().add(monitored);
+
+        if cs.waveform == Waveform::Sampler {
+            if let Some(ref sample_data) = cs.sample_data {
+                let source = SamplerSource::new(
+                    Arc::clone(sample_data),
+                    freq,
+                    Duration::from_millis(200),
+                    cs.volume * 0.8,
+                    cs.envelope,
+                );
+                let monitored =
+                    PeakMonitor::new(source.amplify(master_volume), self.peak_level.clone());
+                self.device_sink.as_ref().unwrap().mixer().add(monitored);
+            }
+        } else {
+            let bend = Arc::new(PitchBendControl::new());
+            let source = SynthSource::new(
+                cs.waveform,
+                freq,
+                Duration::from_millis(200),
+                cs.volume * 0.8,
+                cs.envelope,
+                bend,
+            );
+            let monitored =
+                PeakMonitor::new(source.amplify(master_volume), self.peak_level.clone());
+            self.device_sink.as_ref().unwrap().mixer().add(monitored);
+        }
     }
 }

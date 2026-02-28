@@ -4,15 +4,31 @@ use std::time::Duration;
 
 use hound::{SampleFormat, WavSpec, WavWriter};
 
-use crate::project::{Cell, ChannelSettings, Pattern, parse_pitch_bend};
+use crate::project::{Cell, ChannelSettings, Pattern, Waveform, parse_pitch_bend};
 
+use super::sampler::SamplerSource;
 use super::synth::{PitchBendControl, SynthSource};
 
 const SAMPLE_RATE: u32 = 44100;
 const BITS_PER_SAMPLE: u16 = 16;
 
+enum ChannelSource {
+    Synth(SynthSource),
+    Sampler(SamplerSource),
+}
+
+impl Iterator for ChannelSource {
+    type Item = f32;
+    fn next(&mut self) -> Option<f32> {
+        match self {
+            Self::Synth(s) => s.next(),
+            Self::Sampler(s) => s.next(),
+        }
+    }
+}
+
 struct ExportChannel {
-    source: Option<SynthSource>,
+    source: Option<ChannelSource>,
     bend_control: Arc<PitchBendControl>,
     base_freq: f32,
     note_start_row: Option<usize>,
@@ -69,29 +85,44 @@ pub fn export_wav(
                     let note_duration =
                         gate_duration + Duration::from_secs_f32(cs.envelope.release);
 
-                    let bend = Arc::new(PitchBendControl::new());
+                    if cs.waveform == Waveform::Sampler {
+                        if let Some(ref sample_data) = cs.sample_data {
+                            state.source = Some(ChannelSource::Sampler(SamplerSource::new(
+                                Arc::clone(sample_data),
+                                note.frequency(),
+                                note_duration,
+                                cs.volume,
+                                cs.envelope,
+                            )));
+                        } else {
+                            state.source = None;
+                        }
+                        state.note_start_row = Some(row);
+                    } else {
+                        let bend = Arc::new(PitchBendControl::new());
 
-                    if let Some(cmd) = effect
-                        && let Some((semitones, steps)) = parse_pitch_bend(cmd)
-                        && semitones != 0
-                        && steps > 0
-                    {
-                        let target = note.frequency() * (f32::from(semitones) / 12.0).exp2();
-                        let dur = step_duration.as_secs_f32() * f32::from(steps);
-                        bend.set(target, 0.0, dur);
+                        if let Some(cmd) = effect
+                            && let Some((semitones, steps)) = parse_pitch_bend(cmd)
+                            && semitones != 0
+                            && steps > 0
+                        {
+                            let target = note.frequency() * (f32::from(semitones) / 12.0).exp2();
+                            let dur = step_duration.as_secs_f32() * f32::from(steps);
+                            bend.set(target, 0.0, dur);
+                        }
+
+                        state.source = Some(ChannelSource::Synth(SynthSource::new(
+                            cs.waveform,
+                            note.frequency(),
+                            note_duration,
+                            cs.volume,
+                            cs.envelope,
+                            bend.clone(),
+                        )));
+                        state.bend_control = bend;
+                        state.base_freq = note.frequency();
+                        state.note_start_row = Some(row);
                     }
-
-                    state.source = Some(SynthSource::new(
-                        cs.waveform,
-                        note.frequency(),
-                        note_duration,
-                        cs.volume,
-                        cs.envelope,
-                        bend.clone(),
-                    ));
-                    state.bend_control = bend;
-                    state.base_freq = note.frequency();
-                    state.note_start_row = Some(row);
                 }
                 Cell::NoteOff => {
                     state.source = None;

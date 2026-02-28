@@ -1,9 +1,11 @@
 /// Everything in this module is saveable project data.
 pub mod channel;
 pub mod pattern;
+pub mod sample;
 
 pub use channel::{ChannelSettings, Envelope, Waveform};
 pub use pattern::{Cell, Note, Pattern, effect_display, parse_pitch_bend};
+pub use sample::SampleData;
 
 use crate::scale::ScaleIndex;
 

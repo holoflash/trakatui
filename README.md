@@ -15,8 +15,8 @@ All features are subject to change without notice before version 1.0.0
 - [ ] Synth LFO
 - [ ] Patterns
 - [ ] Save/load from file
-- [ ] Sampler channel
-- [x] Pitch Up and Pitch Down effect 
+- [x] Sampler channel
+- [x] Pitch Up and Pitch Down effect
 - [x] Effects channel
 - [x] Pattern editor
 - [x] Built-in synthesizer

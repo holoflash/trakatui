@@ -1,3 +1,7 @@
+use std::sync::Arc;
+
+use super::sample::SampleData;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Waveform {
     Sine,
@@ -5,6 +9,7 @@ pub enum Waveform {
     Square,
     Saw,
     Noise,
+    Sampler,
 }
 
 impl Waveform {
@@ -15,6 +20,7 @@ impl Waveform {
             Self::Square => "SQR",
             Self::Saw => "SAW",
             Self::Noise => "NOS",
+            Self::Sampler => "SMP",
         }
     }
 
@@ -24,17 +30,19 @@ impl Waveform {
             Self::Triangle => Self::Square,
             Self::Square => Self::Saw,
             Self::Saw => Self::Noise,
-            Self::Noise => Self::Sine,
+            Self::Noise => Self::Sampler,
+            Self::Sampler => Self::Sine,
         }
     }
 
     pub const fn prev(self) -> Self {
         match self {
-            Self::Sine => Self::Noise,
+            Self::Sine => Self::Sampler,
             Self::Triangle => Self::Sine,
             Self::Square => Self::Triangle,
             Self::Saw => Self::Square,
             Self::Noise => Self::Saw,
+            Self::Sampler => Self::Noise,
         }
     }
 
@@ -70,19 +78,25 @@ impl Waveform {
                 sustain: 0.3,
                 release: 0.02,
             },
+            Self::Sampler => Envelope {
+                attack: 0.000,
+                decay: 0.1,
+                sustain: 0.8,
+                release: 0.05,
+            },
         }
     }
 }
 
 pub const DEFAULT_INSTRUMENTS: [Waveform; 8] = [
     Waveform::Square,
-    Waveform::Square,
-    Waveform::Saw,
     Waveform::Saw,
     Waveform::Triangle,
     Waveform::Sine,
     Waveform::Noise,
-    Waveform::Noise,
+    Waveform::Sampler,
+    Waveform::Sampler,
+    Waveform::Sampler,
 ];
 
 #[derive(Debug, Clone, Copy)]
@@ -93,19 +107,26 @@ pub struct Envelope {
     pub release: f32,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ChannelSettings {
     pub waveform: Waveform,
     pub envelope: Envelope,
     pub volume: f32,
+    pub sample_data: Option<Arc<SampleData>>,
 }
 
 impl ChannelSettings {
-    pub const fn default_for(waveform: Waveform) -> Self {
+    pub fn default_for(waveform: Waveform) -> Self {
+        let volume = if waveform == Waveform::Sampler {
+            1.0
+        } else {
+            0.5
+        };
         Self {
             envelope: waveform.default_envelope(),
             waveform,
-            volume: 0.8,
+            volume,
+            sample_data: None,
         }
     }
 

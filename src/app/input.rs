@@ -2,7 +2,7 @@ use eframe::egui::{self, Key};
 
 use crate::keybindings::Action;
 use crate::keys::key_to_note;
-use crate::project::Cell;
+use crate::project::{Cell, SampleData, Waveform};
 
 use super::{App, Mode, SettingsField, SubColumn, SynthSettingsField};
 
@@ -597,7 +597,7 @@ impl App {
         } else if actions.contains(&Action::SwitchToSynth) {
         } else if actions.contains(&Action::SwitchToSettings) {
             self.mode = Mode::Settings;
-            self.settings_field = SettingsField::Bpm;
+            self.settings_field = SettingsField::Scale;
         } else if actions.contains(&Action::SettingsDown) {
             self.synth_field = self.synth_field.next();
         } else if actions.contains(&Action::SettingsUp) {
@@ -611,7 +611,14 @@ impl App {
                 SynthSettingsField::Waveform => {
                     let cs = &mut self.project.channel_settings[ch];
                     cs.waveform = cs.waveform.next();
+                    cs.envelope = cs.waveform.default_envelope();
+                    cs.volume = if cs.waveform == Waveform::Sampler {
+                        1.0
+                    } else {
+                        0.5
+                    };
                 }
+                SynthSettingsField::Sample => {}
                 SynthSettingsField::Attack => {
                     let cs = &mut self.project.channel_settings[ch];
                     cs.envelope.attack = (cs.envelope.attack + 0.005).min(2.0);
@@ -645,14 +652,21 @@ impl App {
                 SynthSettingsField::Waveform => {
                     let cs = &mut self.project.channel_settings[ch];
                     cs.waveform = cs.waveform.prev();
+                    cs.envelope = cs.waveform.default_envelope();
+                    cs.volume = if cs.waveform == Waveform::Sampler {
+                        1.0
+                    } else {
+                        0.5
+                    };
                 }
+                SynthSettingsField::Sample => {}
                 SynthSettingsField::Attack => {
                     let cs = &mut self.project.channel_settings[ch];
-                    cs.envelope.attack = (cs.envelope.attack - 0.005).max(0.001);
+                    cs.envelope.attack = (cs.envelope.attack - 0.005).max(0.0);
                 }
                 SynthSettingsField::Decay => {
                     let cs = &mut self.project.channel_settings[ch];
-                    cs.envelope.decay = (cs.envelope.decay - 0.005).max(0.001);
+                    cs.envelope.decay = (cs.envelope.decay - 0.005).max(0.0);
                 }
                 SynthSettingsField::Sustain => {
                     let cs = &mut self.project.channel_settings[ch];
@@ -660,13 +674,33 @@ impl App {
                 }
                 SynthSettingsField::Release => {
                     let cs = &mut self.project.channel_settings[ch];
-                    cs.envelope.release = (cs.envelope.release - 0.005).max(0.001);
+                    cs.envelope.release = (cs.envelope.release - 0.005).max(0.0);
                 }
                 SynthSettingsField::Volume => {
                     let cs = &mut self.project.channel_settings[ch];
                     cs.volume = (cs.volume - 0.05).max(0.0);
                 }
             }
+        } else if self.project.channel_settings[ch].waveform == Waveform::Sampler
+            && actions.contains(&Action::LoadSample)
+        {
+            self.load_sample_for_channel(ch);
+        }
+    }
+
+    fn load_sample_for_channel(&mut self, ch: usize) {
+        let mut dialog = rfd::FileDialog::new()
+            .add_filter("Audio Files", &["wav"])
+            .set_title("Load Sample");
+
+        if let Some(home) = dirs::home_dir() {
+            dialog = dialog.set_directory(home);
+        }
+
+        if let Some(path) = dialog.pick_file()
+            && let Ok(data) = SampleData::load_from_path(&path)
+        {
+            self.project.channel_settings[ch].sample_data = Some(data);
         }
     }
 }
