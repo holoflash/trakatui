@@ -1,49 +1,52 @@
 use eframe::egui::{self, Key};
 
+use crate::keybindings::Action;
 use crate::keys::key_to_note;
 use crate::pattern::Cell;
 
 use super::{App, Mode, SettingsField, SynthSettingsField};
 
-fn physical_key_pressed(input: &egui::InputState, key: Key) -> bool {
-    input.events.iter().any(|e| {
-        matches!(e, egui::Event::Key {
-            physical_key: Some(pk),
-            pressed: true,
-            ..
-        } if *pk == key)
-    })
-}
-
 impl App {
     pub fn handle_input(&mut self, ctx: &egui::Context) -> bool {
         ctx.input(|input| {
-            if input.key_pressed(Key::Enter) || input.key_pressed(Key::Space) {
+            let actions = self.keybindings.active_actions(input);
+
+            if actions.contains(&Action::PlayStop) {
                 if self.playing {
                     self.stop_playback();
                 } else {
                     self.clear_selection();
-                    self.start_playback(input.key_pressed(Key::Space));
+                    self.start_playback(false);
+                }
+                return false;
+            }
+
+            if actions.contains(&Action::PlayFromCursor) {
+                if self.playing {
+                    self.stop_playback();
+                } else {
+                    self.clear_selection();
+                    self.start_playback(true);
                 }
                 return false;
             }
 
             match self.mode {
-                Mode::Edit => self.handle_edit_input(input),
+                Mode::Edit => self.handle_edit_input(input, &actions),
                 Mode::Settings => {
-                    self.handle_settings_input(input);
+                    self.handle_settings_input(&actions);
                     false
                 }
                 Mode::SynthEdit => {
-                    self.handle_synth_input(input);
+                    self.handle_synth_input(&actions);
                     false
                 }
             }
         })
     }
 
-    fn handle_edit_input(&mut self, input: &egui::InputState) -> bool {
-        if input.key_pressed(Key::Num2) {
+    fn handle_edit_input(&mut self, input: &egui::InputState, actions: &[Action]) -> bool {
+        if actions.contains(&Action::SwitchToSynth) {
             self.clear_selection();
             self.mode = Mode::SynthEdit;
             self.synth_channel = self.cursor_channel;
@@ -51,31 +54,30 @@ impl App {
             return false;
         }
 
-        if input.key_pressed(Key::Num3) {
+        if actions.contains(&Action::SwitchToSettings) {
             self.clear_selection();
             self.mode = Mode::Settings;
             self.settings_field = SettingsField::Bpm;
             return false;
         }
 
-        let alt = input.modifiers.alt;
-        let shift = input.modifiers.shift;
-        let cmnd = input.modifiers.command;
+        let move_action = [
+            Action::MoveUp,
+            Action::MoveDown,
+            Action::MoveLeft,
+            Action::MoveRight,
+        ]
+        .iter()
+        .find(|a| actions.contains(a))
+        .copied();
 
-        let arrow_pressed = input.key_pressed(Key::ArrowUp)
-            || input.key_pressed(Key::ArrowDown)
-            || input.key_pressed(Key::ArrowLeft)
-            || input.key_pressed(Key::ArrowRight);
-
-        if arrow_pressed && shift {
-            let (dr, dc): (isize, isize) = if input.key_pressed(Key::ArrowUp) {
-                (-1, 0)
-            } else if input.key_pressed(Key::ArrowDown) {
-                (1, 0)
-            } else if input.key_pressed(Key::ArrowLeft) {
-                (0, -1)
-            } else {
-                (0, 1)
+        if let Some(dir) = move_action {
+            let (dr, dc): (isize, isize) = match dir {
+                Action::MoveUp => (-1, 0),
+                Action::MoveDown => (1, 0),
+                Action::MoveLeft => (0, -1),
+                Action::MoveRight => (0, 1),
+                _ => unreachable!(),
             };
 
             if let Some((min_ch, max_ch, min_row, max_row)) = self.selection_bounds() {
@@ -126,41 +128,108 @@ impl App {
                     self.cursor_row = new_row;
                 }
             }
-        } else if arrow_pressed && alt && self.selection_anchor.is_none() {
+            return false;
+        }
+
+        let select_action = [
+            Action::SelectUp,
+            Action::SelectDown,
+            Action::SelectLeft,
+            Action::SelectRight,
+        ]
+        .iter()
+        .find(|a| actions.contains(a))
+        .copied();
+
+        if select_action.is_some() && self.selection_anchor.is_none() {
             self.selection_anchor = Some((self.cursor_channel, self.cursor_row));
-        } else if arrow_pressed && !alt {
-            self.clear_selection();
         }
 
-        if arrow_pressed && !shift {
-            if input.key_pressed(Key::ArrowUp) {
-                if self.cursor_row > 0 {
-                    self.cursor_row -= 1;
-                } else {
-                    self.cursor_row = self.pattern.rows - 1;
-                }
-            } else if input.key_pressed(Key::ArrowDown) {
-                if self.cursor_row < self.pattern.rows - 1 {
-                    self.cursor_row += 1;
-                } else {
-                    self.cursor_row = 0;
-                }
-            } else if input.key_pressed(Key::ArrowLeft) {
-                if self.cursor_channel > 0 {
-                    self.cursor_channel -= 1;
-                } else {
-                    self.cursor_channel = self.pattern.channels - 1;
-                }
-            } else if input.key_pressed(Key::ArrowRight) {
-                if self.cursor_channel < self.pattern.channels - 1 {
-                    self.cursor_channel += 1;
-                } else {
-                    self.cursor_channel = 0;
-                }
+        let cursor_action = [
+            Action::CursorUp,
+            Action::CursorDown,
+            Action::CursorLeft,
+            Action::CursorRight,
+        ]
+        .iter()
+        .find(|a| actions.contains(a))
+        .copied();
+
+        if let Some(dir) = cursor_action {
+            if select_action.is_none() {
+                self.clear_selection();
             }
+
+            match dir {
+                Action::CursorUp => {
+                    if self.cursor_row > 0 {
+                        self.cursor_row -= 1;
+                    } else {
+                        self.cursor_row = self.pattern.rows - 1;
+                    }
+                }
+                Action::CursorDown => {
+                    if self.cursor_row < self.pattern.rows - 1 {
+                        self.cursor_row += 1;
+                    } else {
+                        self.cursor_row = 0;
+                    }
+                }
+                Action::CursorLeft => {
+                    if self.cursor_channel > 0 {
+                        self.cursor_channel -= 1;
+                    } else {
+                        self.cursor_channel = self.pattern.channels - 1;
+                    }
+                }
+                Action::CursorRight => {
+                    if self.cursor_channel < self.pattern.channels - 1 {
+                        self.cursor_channel += 1;
+                    } else {
+                        self.cursor_channel = 0;
+                    }
+                }
+                _ => {}
+            }
+            return false;
         }
 
-        if input.key_pressed(Key::Delete) || input.key_pressed(Key::Backspace) {
+        if let Some(dir) = select_action {
+            match dir {
+                Action::SelectUp => {
+                    if self.cursor_row > 0 {
+                        self.cursor_row -= 1;
+                    } else {
+                        self.cursor_row = self.pattern.rows - 1;
+                    }
+                }
+                Action::SelectDown => {
+                    if self.cursor_row < self.pattern.rows - 1 {
+                        self.cursor_row += 1;
+                    } else {
+                        self.cursor_row = 0;
+                    }
+                }
+                Action::SelectLeft => {
+                    if self.cursor_channel > 0 {
+                        self.cursor_channel -= 1;
+                    } else {
+                        self.cursor_channel = self.pattern.channels - 1;
+                    }
+                }
+                Action::SelectRight => {
+                    if self.cursor_channel < self.pattern.channels - 1 {
+                        self.cursor_channel += 1;
+                    } else {
+                        self.cursor_channel = 0;
+                    }
+                }
+                _ => {}
+            }
+            return false;
+        }
+
+        if actions.contains(&Action::Delete) {
             if let Some((min_ch, max_ch, min_row, max_row)) = self.selection_bounds() {
                 for ch in min_ch..=max_ch {
                     for row in min_row..=max_row {
@@ -172,7 +241,7 @@ impl App {
                 self.pattern.clear(self.cursor_channel, self.cursor_row);
                 self.cursor_row = self.cursor_row.wrapping_sub(1) % self.pattern.rows;
             }
-        } else if input.key_pressed(Key::Tab) {
+        } else if actions.contains(&Action::NoteOff) {
             self.clear_selection();
             self.pattern
                 .set(self.cursor_channel, self.cursor_row, Cell::NoteOff);
@@ -183,13 +252,17 @@ impl App {
             } else {
                 self.cursor_row = self.pattern.rows - 1;
             }
-        } else if cmnd && physical_key_pressed(input, Key::Period)
-            || cmnd && physical_key_pressed(input, Key::Comma)
+        } else if actions.contains(&Action::TransposeUp)
+            || actions.contains(&Action::TransposeDown)
+            || actions.contains(&Action::TransposeOctaveUp)
+            || actions.contains(&Action::TransposeOctaveDown)
         {
-            let delta: i16 = if physical_key_pressed(input, Key::Period) {
-                if shift { 12 } else { 1 }
-            } else if shift {
+            let delta: i16 = if actions.contains(&Action::TransposeOctaveUp) {
+                12
+            } else if actions.contains(&Action::TransposeOctaveDown) {
                 -12
+            } else if actions.contains(&Action::TransposeUp) {
+                1
             } else {
                 -1
             };
@@ -236,15 +309,15 @@ impl App {
                     }
                 }
             }
-        } else if input.key_pressed(Key::Period) {
+        } else if actions.contains(&Action::OctaveUp) {
             if self.octave < 8 {
                 self.octave += 1;
             }
-        } else if input.key_pressed(Key::Comma) {
+        } else if actions.contains(&Action::OctaveDown) {
             if self.octave > 0 {
                 self.octave -= 1;
             }
-        } else if input.key_pressed(Key::Escape) {
+        } else if actions.contains(&Action::Escape) {
             if self.selection_anchor.is_some() {
                 self.clear_selection();
             } else if self.playing {
@@ -312,24 +385,25 @@ impl App {
         false
     }
 
-    fn handle_settings_input(&mut self, input: &egui::InputState) {
-        if input.key_pressed(Key::Escape) {
+    fn handle_settings_input(&mut self, actions: &[Action]) {
+        if actions.contains(&Action::Escape) {
             if self.playing {
                 self.stop_playback();
             }
             self.mode = Mode::Edit;
-        } else if input.key_pressed(Key::Num1) {
+        } else if actions.contains(&Action::SwitchToEdit) {
             self.mode = Mode::Edit;
-        } else if input.key_pressed(Key::Num2) {
+        } else if actions.contains(&Action::SwitchToSynth) {
             self.mode = Mode::SynthEdit;
             self.synth_channel = self.cursor_channel;
             self.synth_field = SynthSettingsField::Channel;
-        } else if input.key_pressed(Key::Num3) {
-        } else if input.key_pressed(Key::ArrowDown) {
+        } else if actions.contains(&Action::SwitchToSettings) {
+            // already in settings
+        } else if actions.contains(&Action::SettingsDown) {
             self.settings_field = self.settings_field.next();
-        } else if input.key_pressed(Key::ArrowUp) {
+        } else if actions.contains(&Action::SettingsUp) {
             self.settings_field = self.settings_field.prev();
-        } else if input.key_pressed(Key::ArrowRight) {
+        } else if actions.contains(&Action::SettingsIncrease) {
             match self.settings_field {
                 SettingsField::Subdivision => {
                     self.subdivision = (self.subdivision + 1).min(64);
@@ -351,7 +425,7 @@ impl App {
                     self.transpose = (self.transpose + 1).min(12);
                 }
             }
-        } else if input.key_pressed(Key::ArrowLeft) {
+        } else if actions.contains(&Action::SettingsDecrease) {
             match self.settings_field {
                 SettingsField::Subdivision => {
                     self.subdivision = self.subdivision.saturating_sub(1).max(2);
@@ -379,25 +453,25 @@ impl App {
         }
     }
 
-    fn handle_synth_input(&mut self, input: &egui::InputState) {
+    fn handle_synth_input(&mut self, actions: &[Action]) {
         let ch = self.synth_channel;
 
-        if input.key_pressed(Key::Escape) {
+        if actions.contains(&Action::Escape) {
             if self.playing {
                 self.stop_playback();
             }
             self.mode = Mode::Edit;
-        } else if input.key_pressed(Key::Num1) {
+        } else if actions.contains(&Action::SwitchToEdit) {
             self.mode = Mode::Edit;
-        } else if input.key_pressed(Key::Num2) {
-        } else if input.key_pressed(Key::Num3) {
+        } else if actions.contains(&Action::SwitchToSynth) {
+        } else if actions.contains(&Action::SwitchToSettings) {
             self.mode = Mode::Settings;
             self.settings_field = SettingsField::Bpm;
-        } else if input.key_pressed(Key::ArrowDown) {
+        } else if actions.contains(&Action::SettingsDown) {
             self.synth_field = self.synth_field.next();
-        } else if input.key_pressed(Key::ArrowUp) {
+        } else if actions.contains(&Action::SettingsUp) {
             self.synth_field = self.synth_field.prev();
-        } else if input.key_pressed(Key::ArrowRight) {
+        } else if actions.contains(&Action::SettingsIncrease) {
             match self.synth_field {
                 SynthSettingsField::Channel => {
                     self.synth_channel = (self.synth_channel + 1) % self.pattern.channels;
@@ -427,7 +501,7 @@ impl App {
                     cs.volume = (cs.volume + 0.05).min(1.0);
                 }
             }
-        } else if input.key_pressed(Key::ArrowLeft) {
+        } else if actions.contains(&Action::SettingsDecrease) {
             match self.synth_field {
                 SynthSettingsField::Channel => {
                     self.synth_channel = if self.synth_channel == 0 {

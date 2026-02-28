@@ -82,7 +82,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                 );
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let btn = ui.add(
+                    let export_btn = ui.add(
                         egui::Button::new(
                             RichText::new(" Export WAV ")
                                 .font(FontId::monospace(12.0))
@@ -91,9 +91,25 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                         .fill(COLOR_LAYOUT_BORDER)
                         .stroke(Stroke::new(1.0, COLOR_LAYOUT_BORDER_ACTIVE)),
                     );
-                    btn.surrender_focus();
-                    if btn.clicked() {
+                    export_btn.surrender_focus();
+                    if export_btn.clicked() {
                         app.do_export();
+                    }
+
+                    ui.add_space(4.0);
+
+                    let ctrl_btn = ui.add(
+                        egui::Button::new(
+                            RichText::new(" Controls ")
+                                .font(FontId::monospace(12.0))
+                                .color(COLOR_PATTERN_CURSOR_TEXT),
+                        )
+                        .fill(COLOR_LAYOUT_BORDER)
+                        .stroke(Stroke::new(1.0, COLOR_LAYOUT_BORDER_ACTIVE)),
+                    );
+                    ctrl_btn.surrender_focus();
+                    if ctrl_btn.clicked() {
+                        app.show_controls_modal = !app.show_controls_modal;
                     }
                 });
             });

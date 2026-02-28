@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use crate::audio::AudioEngine;
 use crate::export;
+use crate::keybindings::KeyBindings;
 use crate::pattern::Pattern;
 use crate::scale::ScaleIndex;
 use crate::synth::ChannelSettings;
@@ -112,6 +113,8 @@ pub struct App {
     pub peak_level: Arc<AtomicU32>,
     pub display_peak: f32,
     pub(crate) last_step_time: Option<Instant>,
+    pub keybindings: KeyBindings,
+    pub show_controls_modal: bool,
 }
 
 impl App {
@@ -142,6 +145,8 @@ impl App {
             peak_level,
             display_peak: 0.0,
             last_step_time: None,
+            keybindings: KeyBindings::defaults(),
+            show_controls_modal: false,
         }
     }
 

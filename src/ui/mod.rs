@@ -1,4 +1,4 @@
-mod footer;
+mod controls_modal;
 mod header;
 mod instrument;
 mod pattern;
@@ -39,7 +39,7 @@ pub const COLOR_PATTERN_SELECTION_TEXT: Color32 = Color32::from_rgb(245, 235, 20
 
 pub fn draw(ctx: &egui::Context, app: &mut App) {
     header::draw_header(ctx, app);
-    footer::draw_footer(ctx, app);
     sidebar::draw_sidebar(ctx, app);
     pattern::draw_pattern(ctx, app);
+    controls_modal::draw_controls_modal(ctx, app);
 }

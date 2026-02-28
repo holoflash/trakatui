@@ -1,6 +1,7 @@
 mod app;
 mod audio;
 mod export;
+mod keybindings;
 mod keys;
 mod pattern;
 mod scale;
