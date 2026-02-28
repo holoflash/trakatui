@@ -61,11 +61,11 @@ impl KeyCombo {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Action {
-    // ── Global ───────────────────────────────────────
+    // Global
     PlayStop,
     PlayFromCursor,
 
-    // ── Edit mode ────────────────────────────────────
+    // Edit mode
     CursorUp,
     CursorDown,
     CursorLeft,
@@ -94,12 +94,12 @@ pub enum Action {
 
     Escape,
 
-    // ── Mode switching ───────────────────────────────
+    // Mode switching
     SwitchToEdit,
     SwitchToSynth,
     SwitchToSettings,
 
-    // ── Settings / Synth navigation ──────────────────
+    // Settings / Synth navigation
     SettingsUp,
     SettingsDown,
     SettingsIncrease,
@@ -138,11 +138,10 @@ impl KeyBindings {
             .collect()
     }
 
-    #[allow(clippy::too_many_lines)]
     pub fn defaults() -> Self {
         Self {
             bindings: vec![
-                // ── Global ──────────────────────────────
+                // Global
                 Binding {
                     action: Action::PlayStop,
                     combo: KeyCombo::new(Key::Enter),
@@ -157,7 +156,7 @@ impl KeyBindings {
                     description: "Toggle playback starting at the cursor row",
                     category: "Global",
                 },
-                // ── Edit mode ───────────────────────────
+                // Edit mode
                 Binding {
                     action: Action::CursorUp,
                     combo: KeyCombo::new(Key::ArrowUp),
@@ -188,56 +187,56 @@ impl KeyBindings {
                 },
                 Binding {
                     action: Action::MoveUp,
-                    combo: KeyCombo::new(Key::ArrowUp).shift(),
+                    combo: KeyCombo::new(Key::ArrowUp).alt(),
                     title: "Move up",
                     description: "Move note / selection one row up",
                     category: "Edit",
                 },
                 Binding {
                     action: Action::MoveDown,
-                    combo: KeyCombo::new(Key::ArrowDown).shift(),
+                    combo: KeyCombo::new(Key::ArrowDown).alt(),
                     title: "Move down",
                     description: "Move note / selection one row down",
                     category: "Edit",
                 },
                 Binding {
                     action: Action::MoveLeft,
-                    combo: KeyCombo::new(Key::ArrowLeft).shift(),
+                    combo: KeyCombo::new(Key::ArrowLeft).alt(),
                     title: "Move left",
                     description: "Move note / selection one channel left",
                     category: "Edit",
                 },
                 Binding {
                     action: Action::MoveRight,
-                    combo: KeyCombo::new(Key::ArrowRight).shift(),
+                    combo: KeyCombo::new(Key::ArrowRight).alt(),
                     title: "Move right",
                     description: "Move note / selection one channel right",
                     category: "Edit",
                 },
                 Binding {
                     action: Action::SelectUp,
-                    combo: KeyCombo::new(Key::ArrowUp).alt(),
+                    combo: KeyCombo::new(Key::ArrowUp).shift(),
                     title: "Select up",
                     description: "Begin / extend selection upward",
                     category: "Edit",
                 },
                 Binding {
                     action: Action::SelectDown,
-                    combo: KeyCombo::new(Key::ArrowDown).alt(),
+                    combo: KeyCombo::new(Key::ArrowDown).shift(),
                     title: "Select down",
                     description: "Begin / extend selection downward",
                     category: "Edit",
                 },
                 Binding {
                     action: Action::SelectLeft,
-                    combo: KeyCombo::new(Key::ArrowLeft).alt(),
+                    combo: KeyCombo::new(Key::ArrowLeft).shift(),
                     title: "Select left",
                     description: "Begin / extend selection left",
                     category: "Edit",
                 },
                 Binding {
                     action: Action::SelectRight,
-                    combo: KeyCombo::new(Key::ArrowRight).alt(),
+                    combo: KeyCombo::new(Key::ArrowRight).shift(),
                     title: "Select right",
                     description: "Begin / extend selection right",
                     category: "Edit",
@@ -312,29 +311,29 @@ impl KeyBindings {
                     description: "Clear selection, stop playback, or quit",
                     category: "Global",
                 },
-                // ── Mode switching ──────────────────────
+                // Mode switching
                 Binding {
                     action: Action::SwitchToEdit,
-                    combo: KeyCombo::new(Key::Num1),
+                    combo: KeyCombo::new(Key::Num1).ctrl(),
                     title: "Pattern mode",
                     description: "Switch to the pattern editor",
                     category: "Mode",
                 },
                 Binding {
                     action: Action::SwitchToSynth,
-                    combo: KeyCombo::new(Key::Num2),
+                    combo: KeyCombo::new(Key::Num2).ctrl(),
                     title: "Synth mode",
                     description: "Switch to the synth editor",
                     category: "Mode",
                 },
                 Binding {
                     action: Action::SwitchToSettings,
-                    combo: KeyCombo::new(Key::Num3),
+                    combo: KeyCombo::new(Key::Num3).ctrl(),
                     title: "Settings mode",
                     description: "Switch to the settings panel",
                     category: "Mode",
                 },
-                // ── Settings / Synth navigation ─────────
+                // Settings / Synth navigation
                 Binding {
                     action: Action::SettingsUp,
                     combo: KeyCombo::new(Key::ArrowUp),

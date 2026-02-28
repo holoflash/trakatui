@@ -1,14 +1,14 @@
 use eframe::egui::{self, FontId, RichText, Stroke};
 use egui_extras::{Column, TableBuilder};
 
-use crate::app::{App, Mode};
-use crate::project::Cell;
+use crate::app::{App, Mode, SubColumn};
+use crate::project::{Cell, effect_display};
 
 use super::{
-    COLOR_LAYOUT_BG_DARK, COLOR_PATTERN_CURSOR_BG, COLOR_PATTERN_CURSOR_TEXT, COLOR_PATTERN_NOTE,
-    COLOR_PATTERN_NOTE_OFF, COLOR_PATTERN_PLAYBACK_HIGHLIGHT, COLOR_PATTERN_PLAYBACK_TEXT,
-    COLOR_PATTERN_SELECTION_BG, COLOR_PATTERN_SELECTION_TEXT, COLOR_PATTERN_SUBDIVISION,
-    COLOR_TEXT_ACTIVE, COLOR_TEXT_DIM,
+    COLOR_LAYOUT_BG_DARK, COLOR_PATTERN_CURSOR_BG, COLOR_PATTERN_CURSOR_TEXT, COLOR_PATTERN_EFFECT,
+    COLOR_PATTERN_NOTE, COLOR_PATTERN_NOTE_OFF, COLOR_PATTERN_PLAYBACK_HIGHLIGHT,
+    COLOR_PATTERN_PLAYBACK_TEXT, COLOR_PATTERN_SELECTION_BG, COLOR_PATTERN_SELECTION_TEXT,
+    COLOR_PATTERN_SUBDIVISION, COLOR_TEXT_ACTIVE, COLOR_TEXT_DIM,
 };
 
 const FONT: FontId = FontId::monospace(14.0);
@@ -48,7 +48,7 @@ pub fn draw_pattern(ctx: &egui::Context, app: &mut App) {
                 .column(col);
 
             for _ in 0..channels {
-                table = table.column(col);
+                table = table.column(col).column(col);
             }
 
             table
@@ -88,6 +88,12 @@ fn draw_header_row(header: &mut egui_extras::TableRow<'_, '_>, app: &App, channe
                         COLOR_TEXT_DIM
                     }),
             );
+        });
+        header.col(|ui| {
+            let is_synth_channel = app.mode == Mode::SynthEdit && ch == app.cursor.synth_channel;
+            if is_synth_channel {
+                fill_cell(ui, COLOR_PATTERN_CURSOR_BG);
+            }
             ui.add_space(CELL_PAD);
         });
     }
@@ -126,69 +132,105 @@ fn draw_body_row(row: &mut egui_extras::TableRow<'_, '_>, app: &mut App, channel
     let sel_bounds = app.selection_bounds();
 
     for ch in 0..channels {
-        row.col(|ui| {
-            draw_channel_cell(ui, app, ch, row_idx, is_playback_row, row_bg, sel_bounds);
+        let is_cursor_ch_row =
+            app.mode == Mode::Edit && ch == app.cursor.channel && row_idx == app.cursor.row;
+        let is_cursor_note = is_cursor_ch_row && app.cursor.sub_column == SubColumn::Note;
+        let is_cursor_effect = is_cursor_ch_row && app.cursor.sub_column == SubColumn::Effect;
+        let in_selection = sel_bounds.is_some_and(|(min_ch, max_ch, min_row, max_row)| {
+            ch >= min_ch && ch <= max_ch && row_idx >= min_row && row_idx <= max_row
         });
-    }
-}
+        let is_note_selected = in_selection && app.cursor.sub_column == SubColumn::Note;
+        let is_fx_selected = in_selection && app.cursor.sub_column == SubColumn::Effect;
 
-fn draw_channel_cell(
-    ui: &mut egui::Ui,
-    app: &mut App,
-    ch: usize,
-    row_idx: usize,
-    is_playback_row: bool,
-    row_bg: egui::Color32,
-    sel_bounds: Option<(usize, usize, usize, usize)>,
-) {
-    let is_cursor = app.mode == Mode::Edit && ch == app.cursor.channel && row_idx == app.cursor.row;
-    let is_selected = sel_bounds.is_some_and(|(min_ch, max_ch, min_row, max_row)| {
-        ch >= min_ch && ch <= max_ch && row_idx >= min_row && row_idx <= max_row
-    });
+        let cell = app.project.pattern.get(ch, row_idx);
+        let effect_cmd = app.project.pattern.get_effect(ch, row_idx);
 
-    let cell = app.project.pattern.get(ch, row_idx);
-    let cell_text = match cell {
-        Cell::NoteOn(note) => note.name(),
-        Cell::NoteOff => "OFF".to_string(),
-        Cell::Empty => "···".to_string(),
-    };
+        row.col(|ui| {
+            let note_bg = if is_cursor_note {
+                COLOR_PATTERN_CURSOR_BG
+            } else if is_note_selected {
+                COLOR_PATTERN_SELECTION_BG
+            } else {
+                row_bg
+            };
 
-    let cell_bg = if is_cursor {
-        COLOR_PATTERN_CURSOR_BG
-    } else if is_selected {
-        COLOR_PATTERN_SELECTION_BG
-    } else {
-        row_bg
-    };
+            fill_cell(ui, note_bg);
+            draw_left_border(ui);
 
-    fill_cell(ui, cell_bg);
-    draw_left_border(ui);
+            let cell_text = match cell {
+                Cell::NoteOn(note) => note.name(),
+                Cell::NoteOff => "OFF".to_string(),
+                Cell::Empty => "···".to_string(),
+            };
 
-    let text_color = if is_cursor {
-        COLOR_PATTERN_CURSOR_TEXT
-    } else if is_selected {
-        COLOR_PATTERN_SELECTION_TEXT
-    } else if is_playback_row {
-        COLOR_PATTERN_PLAYBACK_TEXT
-    } else if matches!(cell, Cell::NoteOff) {
-        COLOR_PATTERN_NOTE_OFF
-    } else {
-        COLOR_PATTERN_NOTE
-    };
+            let note_color = if is_cursor_note {
+                COLOR_PATTERN_CURSOR_TEXT
+            } else if is_note_selected {
+                COLOR_PATTERN_SELECTION_TEXT
+            } else if is_playback_row {
+                COLOR_PATTERN_PLAYBACK_TEXT
+            } else if matches!(cell, Cell::NoteOff) {
+                COLOR_PATTERN_NOTE_OFF
+            } else {
+                COLOR_PATTERN_NOTE
+            };
 
-    let mut text = RichText::new(&cell_text).font(FONT).color(text_color);
-    if is_cursor {
-        text = text.strong();
-    }
+            let mut note_rt = RichText::new(&cell_text).font(FONT).color(note_color);
+            if is_cursor_note {
+                note_rt = note_rt.strong();
+            }
 
-    ui.add_space(CELL_PAD);
-    let response = ui.label(text);
-    ui.add_space(CELL_PAD);
+            ui.add_space(CELL_PAD);
+            let response = ui.label(note_rt);
 
-    if response.clicked() {
-        app.set_cursor(ch, row_idx);
-        if app.mode != Mode::Edit {
-            app.mode = Mode::Edit;
-        }
+            if response.clicked() {
+                app.cursor.sub_column = SubColumn::Note;
+                app.set_cursor(ch, row_idx);
+                if app.mode != Mode::Edit {
+                    app.mode = Mode::Edit;
+                }
+            }
+        });
+
+        row.col(|ui| {
+            let fx_bg = if is_cursor_effect {
+                COLOR_PATTERN_CURSOR_BG
+            } else if is_fx_selected {
+                COLOR_PATTERN_SELECTION_BG
+            } else {
+                row_bg
+            };
+
+            fill_cell(ui, fx_bg);
+
+            let effect_text = effect_display(effect_cmd);
+
+            let fx_color = if is_cursor_effect {
+                COLOR_PATTERN_CURSOR_TEXT
+            } else if is_fx_selected {
+                COLOR_PATTERN_SELECTION_TEXT
+            } else if is_playback_row {
+                COLOR_PATTERN_PLAYBACK_TEXT
+            } else {
+                COLOR_PATTERN_EFFECT
+            };
+
+            let mut fx_rt = RichText::new(&effect_text).font(FONT).color(fx_color);
+            if is_cursor_effect {
+                fx_rt = fx_rt.strong();
+            }
+
+            let response = ui.label(fx_rt);
+            ui.add_space(CELL_PAD);
+
+            if response.clicked() {
+                app.cursor.sub_column = SubColumn::Effect;
+                app.cursor.effect_edit_pos = 0;
+                app.set_cursor(ch, row_idx);
+                if app.mode != Mode::Edit {
+                    app.mode = Mode::Edit;
+                }
+            }
+        });
     }
 }

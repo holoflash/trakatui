@@ -1,4 +1,6 @@
 use std::num::NonZero;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use rodio::Source;
@@ -43,9 +45,39 @@ impl Envelope {
     }
 }
 
+pub struct PitchBendControl {
+    target_freq: AtomicU32,
+    start_secs: AtomicU32,
+    duration_secs: AtomicU32,
+}
+
+impl PitchBendControl {
+    pub const fn new() -> Self {
+        Self {
+            target_freq: AtomicU32::new(0f32.to_bits()),
+            start_secs: AtomicU32::new(0f32.to_bits()),
+            duration_secs: AtomicU32::new(0f32.to_bits()),
+        }
+    }
+
+    pub fn reset(&self) {
+        self.target_freq.store(0f32.to_bits(), Ordering::Relaxed);
+    }
+
+    pub fn set(&self, target_freq: f32, start_secs: f32, duration_secs: f32) {
+        self.start_secs
+            .store(start_secs.to_bits(), Ordering::Relaxed);
+        self.duration_secs
+            .store(duration_secs.to_bits(), Ordering::Relaxed);
+        self.target_freq
+            .store(target_freq.to_bits(), Ordering::Release);
+    }
+}
+
 pub struct SynthSource {
     waveform: Waveform,
-    frequency: f32,
+    base_frequency: f32,
+    bend_control: Arc<PitchBendControl>,
     envelope: Envelope,
     sample_rate: f32,
     sample_rate_u32: u32,
@@ -64,15 +96,16 @@ impl SynthSource {
         duration: Duration,
         amplitude: f32,
         envelope: Envelope,
+        bend_control: Arc<PitchBendControl>,
     ) -> Self {
         let sample_rate_u32: u32 = 44100;
         let sample_rate = 44100.0_f32;
         let note_duration = duration.as_secs_f32();
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let total_samples = (note_duration * sample_rate).round() as u32;
         Self {
             waveform,
-            frequency,
+            base_frequency: frequency,
+            bend_control,
             envelope,
             sample_rate,
             sample_rate_u32,
@@ -84,6 +117,22 @@ impl SynthSource {
             noise_held: fastrand::f32().mul_add(2.0, -1.0),
         }
     }
+
+    fn current_frequency(&self, time: f32) -> f32 {
+        let target = f32::from_bits(self.bend_control.target_freq.load(Ordering::Acquire));
+        if target == 0.0 {
+            return self.base_frequency;
+        }
+        let start = f32::from_bits(self.bend_control.start_secs.load(Ordering::Relaxed));
+        let dur = f32::from_bits(self.bend_control.duration_secs.load(Ordering::Relaxed));
+
+        if dur <= 0.0 || time < start {
+            return self.base_frequency;
+        }
+
+        let t = ((time - start) / dur).clamp(0.0, 1.0);
+        (target - self.base_frequency).mul_add(t, self.base_frequency)
+    }
 }
 
 impl Iterator for SynthSource {
@@ -94,7 +143,6 @@ impl Iterator for SynthSource {
             return None;
         }
 
-        #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
         let time = f64::from(self.elapsed_samples) as f32 / self.sample_rate;
         let env_amp = self.envelope.amplitude(time, self.note_duration);
         let sample = if self.waveform == Waveform::Noise {
@@ -103,7 +151,8 @@ impl Iterator for SynthSource {
             self.waveform.sample(self.phase)
         };
 
-        self.phase += self.frequency / self.sample_rate;
+        let freq = self.current_frequency(time);
+        self.phase += freq / self.sample_rate;
         if self.phase >= 1.0 {
             self.phase -= 1.0;
             if self.waveform == Waveform::Noise {

@@ -8,18 +8,24 @@ use std::time::Duration;
 
 use rodio::{DeviceSinkBuilder, MixerDeviceSink, Source};
 
-use crate::project::{Cell, ChannelSettings, Note, Pattern};
+use crate::project::{Cell, ChannelSettings, Pattern, parse_pitch_bend};
 
-use synth::SynthSource;
+use synth::{PitchBendControl, SynthSource};
 
-pub fn render_note(note: Note, cs: &ChannelSettings, duration: Duration) -> SynthSource {
-    SynthSource::new(
-        cs.waveform,
-        note.frequency(),
-        duration,
-        cs.volume,
-        cs.envelope,
-    )
+struct ChannelPlayState {
+    bend_control: Arc<PitchBendControl>,
+    base_freq: f32,
+    note_start_row: Option<usize>,
+}
+
+impl ChannelPlayState {
+    fn new() -> Self {
+        Self {
+            bend_control: Arc::new(PitchBendControl::new()),
+            base_freq: 0.0,
+            note_start_row: None,
+        }
+    }
 }
 
 pub struct PeakMonitor<S> {
@@ -80,6 +86,7 @@ impl<S: Source<Item = f32>> Source for PeakMonitor<S> {
 pub struct AudioEngine {
     device_sink: Option<MixerDeviceSink>,
     pub peak_level: Arc<AtomicU32>,
+    channel_state: Vec<ChannelPlayState>,
 }
 
 impl AudioEngine {
@@ -87,6 +94,7 @@ impl AudioEngine {
         Self {
             device_sink: Some(Self::create_sink()),
             peak_level: Arc::new(AtomicU32::new(0u32)),
+            channel_state: Vec::new(),
         }
     }
 
@@ -100,31 +108,80 @@ impl AudioEngine {
     pub fn stop_all(&mut self) {
         self.device_sink.take();
         self.device_sink = Some(Self::create_sink());
+        for cs in &mut self.channel_state {
+            *cs = ChannelPlayState::new();
+        }
     }
 
     pub fn play_row(
-        &self,
+        &mut self,
         pattern: &Pattern,
         row: usize,
         step_duration: Duration,
         channel_settings: &[ChannelSettings],
         master_volume: f32,
     ) {
+        while self.channel_state.len() < pattern.channels {
+            self.channel_state.push(ChannelPlayState::new());
+        }
+
         for ch in 0..pattern.channels {
+            let effect = pattern.get_effect(ch, row);
+            let state = &mut self.channel_state[ch];
+
             match pattern.get(ch, row) {
                 Cell::NoteOn(note) => {
                     let cs = &channel_settings[ch % channel_settings.len()];
-                    #[allow(clippy::cast_precision_loss)]
                     let gate_f64 = pattern.gate_rows(ch, row) as f64;
                     let gate_duration = step_duration.mul_f64(gate_f64);
                     let note_duration =
                         gate_duration + Duration::from_secs_f32(cs.envelope.release);
-                    let source = render_note(note, cs, note_duration);
+
+                    let bend = Arc::new(PitchBendControl::new());
+
+                    if let Some(cmd) = effect
+                        && let Some((semitones, steps)) = parse_pitch_bend(cmd)
+                        && semitones != 0
+                        && steps > 0
+                    {
+                        let target = note.frequency() * (f32::from(semitones) / 12.0).exp2();
+                        let dur = step_duration.as_secs_f32() * f32::from(steps);
+                        bend.set(target, 0.0, dur);
+                    }
+
+                    let source = SynthSource::new(
+                        cs.waveform,
+                        note.frequency(),
+                        note_duration,
+                        cs.volume,
+                        cs.envelope,
+                        bend.clone(),
+                    );
                     let monitored =
                         PeakMonitor::new(source.amplify(master_volume), self.peak_level.clone());
                     self.device_sink.as_ref().unwrap().mixer().add(monitored);
+
+                    state.bend_control = bend;
+                    state.base_freq = note.frequency();
+                    state.note_start_row = Some(row);
                 }
-                Cell::NoteOff | Cell::Empty => {}
+                Cell::NoteOff => {
+                    state.note_start_row = None;
+                }
+                Cell::Empty => {
+                    if let (Some(start_row), Some(cmd)) = (state.note_start_row, effect)
+                        && let Some((semitones, steps)) = parse_pitch_bend(cmd)
+                    {
+                        if semitones != 0 && steps > 0 {
+                            let offset = step_duration.as_secs_f32() * (row - start_row) as f32;
+                            let target = state.base_freq * (f32::from(semitones) / 12.0).exp2();
+                            let dur = step_duration.as_secs_f32() * f32::from(steps);
+                            state.bend_control.set(target, offset, dur);
+                        } else {
+                            state.bend_control.reset();
+                        }
+                    }
+                }
             }
         }
     }
@@ -137,12 +194,14 @@ impl AudioEngine {
         master_volume: f32,
     ) {
         let cs = &channel_settings[channel % channel_settings.len()];
+        let bend = Arc::new(PitchBendControl::new());
         let source = SynthSource::new(
             cs.waveform,
             freq,
             Duration::from_millis(200),
             cs.volume * 0.8,
             cs.envelope,
+            bend,
         );
         let monitored = PeakMonitor::new(source.amplify(master_volume), self.peak_level.clone());
         self.device_sink.as_ref().unwrap().mixer().add(monitored);

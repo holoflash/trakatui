@@ -2,7 +2,7 @@ use eframe::egui::{self, Stroke};
 
 use crate::app::App;
 
-use super::{COLOR_LAYOUT_BG_DARK, instrument, settings_panel};
+use super::{COLOR_LAYOUT_BG_DARK, commands_ref, instrument, settings_panel};
 
 pub fn draw_sidebar(ctx: &egui::Context, app: &App) {
     egui::SidePanel::right("sidebar")
@@ -18,5 +18,6 @@ pub fn draw_sidebar(ctx: &egui::Context, app: &App) {
             ui.spacing_mut().item_spacing.y = 0.0;
             instrument::draw_instrument(ui, app);
             settings_panel::draw_settings(ui, app);
+            commands_ref::draw_commands_ref(ui);
         });
 }

@@ -86,9 +86,17 @@ impl SettingsField {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubColumn {
+    Note,
+    Effect,
+}
+
 pub struct Cursor {
     pub channel: usize,
     pub row: usize,
+    pub sub_column: SubColumn,
+    pub effect_edit_pos: usize,
     pub selection_anchor: Option<(usize, usize)>,
     pub octave: u8,
     pub synth_channel: usize,
@@ -118,6 +126,8 @@ impl App {
             cursor: Cursor {
                 channel: 0,
                 row: 0,
+                sub_column: SubColumn::Note,
+                effect_edit_pos: 0,
                 selection_anchor: None,
                 octave: 4,
                 synth_channel: 0,

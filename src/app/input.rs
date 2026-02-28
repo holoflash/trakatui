@@ -4,7 +4,7 @@ use crate::keybindings::Action;
 use crate::keys::key_to_note;
 use crate::project::Cell;
 
-use super::{App, Mode, SettingsField, SynthSettingsField};
+use super::{App, Mode, SettingsField, SubColumn, SynthSettingsField};
 
 impl App {
     pub fn handle_input(&mut self, ctx: &egui::Context) -> bool {
@@ -72,9 +72,10 @@ impl App {
         if actions.contains(&Action::Delete) {
             self.handle_delete();
         } else if actions.contains(&Action::NoteOff) {
-            self.handle_note_off();
+            if self.cursor.sub_column == SubColumn::Note {
+                self.handle_note_off();
+            }
         } else if self.handle_transpose(actions) {
-            // handled
         } else if actions.contains(&Action::OctaveUp) {
             if self.cursor.octave < 8 {
                 self.cursor.octave += 1;
@@ -91,6 +92,8 @@ impl App {
             } else {
                 return true;
             }
+        } else if self.cursor.sub_column == SubColumn::Effect {
+            self.handle_effect_keys(input);
         } else {
             self.handle_note_keys(input);
         }
@@ -121,6 +124,8 @@ impl App {
             _ => unreachable!(),
         };
 
+        let on_note = self.cursor.sub_column == SubColumn::Note;
+
         if let Some((min_ch, max_ch, min_row, max_row)) = self.selection_bounds() {
             let in_bounds = min_row.checked_add_signed(dr).is_some()
                 && max_row
@@ -135,14 +140,24 @@ impl App {
                 let mut cells = Vec::new();
                 for ch in min_ch..=max_ch {
                     for row in min_row..=max_row {
-                        cells.push((ch, row, self.project.pattern.get(ch, row)));
-                        self.project.pattern.clear(ch, row);
+                        let cell = self.project.pattern.get(ch, row);
+                        let fx = self.project.pattern.get_effect(ch, row);
+                        cells.push((ch, row, cell, fx));
+                        if on_note {
+                            self.project.pattern.clear(ch, row);
+                        } else {
+                            self.project.pattern.clear_effect(ch, row);
+                        }
                     }
                 }
-                for (ch, row, cell) in cells {
+                for (ch, row, cell, fx) in cells {
                     let new_ch = ch.checked_add_signed(dc).unwrap();
                     let new_row = row.checked_add_signed(dr).unwrap();
-                    self.project.pattern.set(new_ch, new_row, cell);
+                    if on_note {
+                        self.project.pattern.set(new_ch, new_row, cell);
+                    } else {
+                        self.project.pattern.set_effect(new_ch, new_row, fx);
+                    }
                 }
                 self.cursor.channel = self.cursor.channel.checked_add_signed(dc).unwrap();
                 self.cursor.row = self.cursor.row.checked_add_signed(dr).unwrap();
@@ -157,14 +172,25 @@ impl App {
         ) && new_row < self.project.pattern.rows
             && new_ch < self.project.pattern.channels
         {
-            let cell = self
-                .project
-                .pattern
-                .get(self.cursor.channel, self.cursor.row);
-            self.project
-                .pattern
-                .clear(self.cursor.channel, self.cursor.row);
-            self.project.pattern.set(new_ch, new_row, cell);
+            if on_note {
+                let cell = self
+                    .project
+                    .pattern
+                    .get(self.cursor.channel, self.cursor.row);
+                self.project
+                    .pattern
+                    .clear(self.cursor.channel, self.cursor.row);
+                self.project.pattern.set(new_ch, new_row, cell);
+            } else {
+                let fx = self
+                    .project
+                    .pattern
+                    .get_effect(self.cursor.channel, self.cursor.row);
+                self.project
+                    .pattern
+                    .clear_effect(self.cursor.channel, self.cursor.row);
+                self.project.pattern.set_effect(new_ch, new_row, fx);
+            }
             self.cursor.channel = new_ch;
             self.cursor.row = new_row;
         }
@@ -213,7 +239,7 @@ impl App {
         false
     }
 
-    const fn move_cursor(&mut self, dir: Action) {
+    fn move_cursor(&mut self, dir: Action) {
         match dir {
             Action::CursorUp | Action::SelectUp => {
                 if self.cursor.row > 0 {
@@ -229,14 +255,38 @@ impl App {
                     self.cursor.row = 0;
                 }
             }
-            Action::CursorLeft | Action::SelectLeft => {
+            Action::CursorLeft => {
+                if self.cursor.sub_column == SubColumn::Effect {
+                    self.cursor.sub_column = SubColumn::Note;
+                } else if self.cursor.channel > 0 {
+                    self.cursor.channel -= 1;
+                    self.cursor.sub_column = SubColumn::Effect;
+                } else {
+                    self.cursor.channel = self.project.pattern.channels - 1;
+                    self.cursor.sub_column = SubColumn::Effect;
+                }
+                self.cursor.effect_edit_pos = 0;
+            }
+            Action::CursorRight => {
+                if self.cursor.sub_column == SubColumn::Note {
+                    self.cursor.sub_column = SubColumn::Effect;
+                    self.cursor.effect_edit_pos = 0;
+                } else if self.cursor.channel < self.project.pattern.channels - 1 {
+                    self.cursor.channel += 1;
+                    self.cursor.sub_column = SubColumn::Note;
+                } else {
+                    self.cursor.channel = 0;
+                    self.cursor.sub_column = SubColumn::Note;
+                }
+            }
+            Action::SelectLeft => {
                 if self.cursor.channel > 0 {
                     self.cursor.channel -= 1;
                 } else {
                     self.cursor.channel = self.project.pattern.channels - 1;
                 }
             }
-            Action::CursorRight | Action::SelectRight => {
+            Action::SelectRight => {
                 if self.cursor.channel < self.project.pattern.channels - 1 {
                     self.cursor.channel += 1;
                 } else {
@@ -251,10 +301,19 @@ impl App {
         if let Some((min_ch, max_ch, min_row, max_row)) = self.selection_bounds() {
             for ch in min_ch..=max_ch {
                 for row in min_row..=max_row {
-                    self.project.pattern.clear(ch, row);
+                    if self.cursor.sub_column == SubColumn::Note {
+                        self.project.pattern.clear(ch, row);
+                    } else {
+                        self.project.pattern.clear_effect(ch, row);
+                    }
                 }
             }
             self.clear_selection();
+        } else if self.cursor.sub_column == SubColumn::Effect {
+            self.project
+                .pattern
+                .clear_effect(self.cursor.channel, self.cursor.row);
+            self.cursor.row = self.cursor.row.wrapping_sub(1) % self.project.pattern.rows;
         } else {
             self.project
                 .pattern
@@ -392,6 +451,72 @@ impl App {
         }
     }
 
+    fn handle_effect_keys(&mut self, input: &egui::InputState) {
+        let effect_keys = [
+            (Key::A, b'A'),
+            (Key::B, b'B'),
+            (Key::C, b'C'),
+            (Key::D, b'D'),
+            (Key::E, b'E'),
+            (Key::F, b'F'),
+            (Key::G, b'G'),
+            (Key::H, b'H'),
+            (Key::I, b'I'),
+            (Key::J, b'J'),
+            (Key::K, b'K'),
+            (Key::L, b'L'),
+            (Key::M, b'M'),
+            (Key::N, b'N'),
+            (Key::O, b'O'),
+            (Key::P, b'P'),
+            (Key::Q, b'Q'),
+            (Key::R, b'R'),
+            (Key::S, b'S'),
+            (Key::T, b'T'),
+            (Key::U, b'U'),
+            (Key::V, b'V'),
+            (Key::W, b'W'),
+            (Key::X, b'X'),
+            (Key::Y, b'Y'),
+            (Key::Z, b'Z'),
+            (Key::Num0, b'0'),
+            (Key::Num1, b'1'),
+            (Key::Num2, b'2'),
+            (Key::Num3, b'3'),
+            (Key::Num4, b'4'),
+            (Key::Num5, b'5'),
+            (Key::Num6, b'6'),
+            (Key::Num7, b'7'),
+            (Key::Num8, b'8'),
+            (Key::Num9, b'9'),
+        ];
+
+        for &(key, byte) in &effect_keys {
+            if input.key_pressed(key) {
+                let ch = self.cursor.channel;
+                let row = self.cursor.row;
+                let pos = self.cursor.effect_edit_pos;
+
+                let mut cmd = self
+                    .project
+                    .pattern
+                    .get_effect(ch, row)
+                    .unwrap_or([b'.', b'.', b'.', b'.']);
+                cmd[pos] = byte;
+                self.project.pattern.set_effect(ch, row, Some(cmd));
+
+                if pos < 3 {
+                    self.cursor.effect_edit_pos = pos + 1;
+                } else {
+                    self.cursor.effect_edit_pos = 0;
+                    self.clear_selection();
+                    self.advance_cursor();
+                }
+                break;
+            }
+        }
+    }
+
     fn handle_settings_input(&mut self, actions: &[Action]) {
         if actions.contains(&Action::Escape) {
             if self.playback.playing {
@@ -405,7 +530,6 @@ impl App {
             self.cursor.synth_channel = self.cursor.channel;
             self.synth_field = SynthSettingsField::Channel;
         } else if actions.contains(&Action::SwitchToSettings) {
-            // already in settings
         } else if actions.contains(&Action::SettingsDown) {
             self.settings_field = self.settings_field.next();
         } else if actions.contains(&Action::SettingsUp) {

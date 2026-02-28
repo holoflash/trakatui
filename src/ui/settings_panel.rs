@@ -84,6 +84,5 @@ pub fn draw_settings(ui: &mut egui::Ui, app: &App) {
                         .color(color),
                 );
             }
-            ui.allocate_space(ui.available_size());
         });
 }

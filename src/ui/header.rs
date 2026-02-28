@@ -10,7 +10,6 @@ use super::{
     COLOR_MODE_PLAYING, COLOR_MODE_SETTINGS, COLOR_PATTERN_CURSOR_TEXT, COLOR_TEXT, COLOR_TEXT_DIM,
 };
 
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 const fn clamp_to_u8(v: f32) -> u8 {
     v.round().clamp(0.0, 255.0) as u8
 }
