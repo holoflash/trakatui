@@ -5,6 +5,16 @@ use crate::pattern::Cell;
 
 use super::{App, Mode, SettingsField, SynthSettingsField};
 
+fn physical_key_pressed(input: &egui::InputState, key: Key) -> bool {
+    input.events.iter().any(|e| {
+        matches!(e, egui::Event::Key {
+            physical_key: Some(pk),
+            pressed: true,
+            ..
+        } if *pk == key)
+    })
+}
+
 impl App {
     pub fn handle_input(&mut self, ctx: &egui::Context) -> bool {
         ctx.input(|input| {
@@ -50,6 +60,7 @@ impl App {
 
         let alt = input.modifiers.alt;
         let shift = input.modifiers.shift;
+        let cmnd = input.modifiers.command;
 
         let arrow_pressed = input.key_pressed(Key::ArrowUp)
             || input.key_pressed(Key::ArrowDown)
@@ -167,6 +178,59 @@ impl App {
                 .set(self.cursor_channel, self.cursor_row, Cell::NoteOff);
             if self.cursor_row < self.pattern.rows - 1 {
                 self.cursor_row += 1;
+            }
+        } else if cmnd && physical_key_pressed(input, Key::Period)
+            || cmnd && physical_key_pressed(input, Key::Comma)
+        {
+            let delta: i16 = if physical_key_pressed(input, Key::Period) {
+                if shift { 12 } else { 1 }
+            } else if shift {
+                -12
+            } else {
+                -1
+            };
+
+            let (min_ch, max_ch, min_row, max_row) = if let Some(bounds) = self.selection_bounds() {
+                bounds
+            } else {
+                (
+                    self.cursor_channel,
+                    self.cursor_channel,
+                    self.cursor_row,
+                    self.cursor_row,
+                )
+            };
+
+            let mut min_pitch: Option<u8> = None;
+            let mut max_pitch: Option<u8> = None;
+            for ch in min_ch..=max_ch {
+                for row in min_row..=max_row {
+                    if let Cell::NoteOn(note) = self.pattern.get(ch, row) {
+                        min_pitch = Some(min_pitch.map_or(note.pitch, |p: u8| p.min(note.pitch)));
+                        max_pitch = Some(max_pitch.map_or(note.pitch, |p: u8| p.max(note.pitch)));
+                    }
+                }
+            }
+
+            let can_transpose = if delta > 0 {
+                max_pitch.is_some_and(|p| (p as i16 + delta) <= 127)
+            } else {
+                min_pitch.is_some_and(|p| (p as i16 + delta) >= 0)
+            };
+
+            if can_transpose {
+                for ch in min_ch..=max_ch {
+                    for row in min_row..=max_row {
+                        if let Cell::NoteOn(note) = self.pattern.get(ch, row) {
+                            let new_pitch = (note.pitch as i16 + delta) as u8;
+                            self.pattern.set(
+                                ch,
+                                row,
+                                Cell::NoteOn(crate::pattern::Note::new(new_pitch)),
+                            );
+                        }
+                    }
+                }
             }
         } else if input.key_pressed(Key::Period) {
             if self.octave < 8 {
