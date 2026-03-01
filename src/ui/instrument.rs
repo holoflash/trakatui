@@ -37,7 +37,7 @@ pub fn draw_instrument(ui: &mut egui::Ui, app: &mut App) {
             settings_row(
                 ui,
                 "Channel",
-                &format!("{} ─ {}", ch + 1, cs.waveform.name()),
+                &format!("{}", ch + 1),
                 synth_active && app.synth_field == SynthSettingsField::Channel,
             );
             ui.add_space(6.0);

@@ -73,7 +73,6 @@ fn draw_header_row(header: &mut egui_extras::TableRow<'_, '_>, app: &App, channe
         header.col(|ui| {
             draw_left_border(ui);
 
-            let waveform = app.project.channel_settings[ch].waveform;
             let is_synth_channel = app.mode == Mode::SynthEdit && ch == app.cursor.synth_channel;
             if is_synth_channel {
                 fill_cell(ui, COLOR_PATTERN_CURSOR_BG);
@@ -81,7 +80,7 @@ fn draw_header_row(header: &mut egui_extras::TableRow<'_, '_>, app: &App, channe
 
             ui.add_space(CELL_PAD);
             ui.label(
-                RichText::new(waveform.name())
+                RichText::new(format!("{}", ch + 1))
                     .font(FONT)
                     .color(if is_synth_channel {
                         COLOR_TEXT_ACTIVE

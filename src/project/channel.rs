@@ -15,12 +15,12 @@ pub enum Waveform {
 impl Waveform {
     pub const fn name(self) -> &'static str {
         match self {
-            Self::Sine => "SIN",
-            Self::Triangle => "TRI",
-            Self::Square => "SQR",
+            Self::Sine => "SINE",
+            Self::Triangle => "TRIANGLE",
+            Self::Square => "SQUARE",
             Self::Saw => "SAW",
-            Self::Noise => "NOS",
-            Self::Sampler => "SMP",
+            Self::Noise => "NOISE",
+            Self::Sampler => "SAMPLE",
         }
     }
 

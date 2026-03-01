@@ -1,6 +1,6 @@
 use eframe::egui::{self, FontId, RichText};
 
-use super::{COLOR_TEXT, COLOR_TEXT_DIM, COLOR_MODE_SETTINGS};
+use super::{COLOR_MODE_SETTINGS, COLOR_TEXT, COLOR_TEXT_DIM};
 
 pub fn settings_row(ui: &mut egui::Ui, label: &str, value: &str, active: bool) {
     ui.horizontal(|ui| {
