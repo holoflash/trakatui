@@ -1,3 +1,4 @@
+mod about_modal;
 pub mod commands_ref;
 mod controls_modal;
 mod header;
@@ -45,4 +46,5 @@ pub fn draw(ctx: &egui::Context, app: &mut App) {
     sidebar::draw_sidebar(ctx, app);
     pattern::draw_pattern(ctx, app);
     controls_modal::draw_controls_modal(ctx, app);
+    about_modal::draw_about_modal(ctx, app);
 }

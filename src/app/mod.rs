@@ -210,6 +210,7 @@ pub struct App {
     pub status_message: Option<String>,
     pub keybindings: KeyBindings,
     pub show_controls_modal: bool,
+    pub show_about_modal: bool,
 }
 
 impl App {
@@ -239,6 +240,7 @@ impl App {
             status_message: None,
             keybindings: KeyBindings::defaults(),
             show_controls_modal: false,
+            show_about_modal: false,
         }
     }
 

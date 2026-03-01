@@ -8,6 +8,10 @@ A lightweight cross-platform music tracker built with Rust.
 
 All features are subject to change without notice before version 1.0.0
 
+This project is inspired by, but doesn't strive to replace - the trackers of the late 90s and early 2000s.
+
+If you're looking for a great modern alternative, check out [**Furnace**](https://github.com/tildearrow/furnace).
+
 ### TODO
 
 - [ ] More effect commands

@@ -35,10 +35,18 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.add_space(4.0);
-                ui.add(
-                    egui::Image::new(egui::include_image!("../../psikat.png"))
-                        .fit_to_exact_size(egui::Vec2::new(48.0, 48.0)),
+                let logo_btn = ui.add(
+                    egui::ImageButton::new(
+                        egui::Image::new(egui::include_image!("../../psikat.png"))
+                            .fit_to_exact_size(egui::Vec2::new(48.0, 48.0))
+                            .texture_options(egui::TextureOptions::NEAREST),
+                    )
+                    .frame(false),
                 );
+                logo_btn.surrender_focus();
+                if logo_btn.clicked() {
+                    app.show_about_modal = !app.show_about_modal;
+                }
                 ui.add_space(16.0);
                 let root = root_name(app.project.transpose);
                 let scale_name = app.project.scale_index.scale().name;

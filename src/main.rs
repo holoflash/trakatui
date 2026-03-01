@@ -66,5 +66,6 @@ impl eframe::App for PsikatApp {
 }
 
 fn make_icon() -> egui::IconData {
-    eframe::icon_data::from_png_bytes(include_bytes!("../psikat.png")).expect("Failed to load icon")
+    eframe::icon_data::from_png_bytes(include_bytes!("../psikat_icon_256.png"))
+        .expect("Failed to load icon")
 }
