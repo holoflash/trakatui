@@ -1,6 +1,8 @@
 pub mod input;
 pub mod playback;
 
+use crate::project::{ChannelSettings, Waveform};
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicUsize};
 
@@ -53,6 +55,44 @@ impl SynthSettingsField {
             Self::Volume => Self::Release,
         }
     }
+
+    pub fn adjust(self, cs: &mut ChannelSettings, delta: i16) {
+        match self {
+            Self::Channel => {}
+            Self::Waveform => {
+                cs.waveform = if delta > 0 {
+                    cs.waveform.next()
+                } else {
+                    cs.waveform.prev()
+                };
+                cs.envelope = cs.waveform.default_envelope();
+                cs.volume = if cs.waveform == Waveform::Sampler {
+                    1.0
+                } else {
+                    0.5
+                };
+            }
+            Self::Sample => {}
+            Self::Attack => {
+                cs.envelope.attack =
+                    (cs.envelope.attack + 0.005 * f32::from(delta)).clamp(0.0, 2.0);
+            }
+            Self::Decay => {
+                cs.envelope.decay = (cs.envelope.decay + 0.005 * f32::from(delta)).clamp(0.0, 2.0);
+            }
+            Self::Sustain => {
+                cs.envelope.sustain =
+                    (cs.envelope.sustain + 0.05 * f32::from(delta)).clamp(0.0, 1.0);
+            }
+            Self::Release => {
+                cs.envelope.release =
+                    (cs.envelope.release + 0.005 * f32::from(delta)).clamp(0.0, 2.0);
+            }
+            Self::Volume => {
+                cs.volume = (cs.volume + 0.05 * f32::from(delta)).clamp(0.0, 1.0);
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,6 +127,57 @@ impl SettingsField {
             Self::Transpose => Self::Scale,
         }
     }
+
+    pub fn adjust(self, project: &mut crate::project::Project, _cursor_row: &mut usize) {
+        match self {
+            Self::Subdivision => {
+                project.subdivision = (project.subdivision + 1).min(64);
+            }
+            Self::Step => {
+                project.step = (project.step + 1).min(64);
+            }
+            Self::Bpm => {
+                project.bpm = (project.bpm + 1).min(666);
+            }
+            Self::PatternLength => {
+                let new_len = (project.pattern.rows + 1).min(128);
+                project.pattern.resize(new_len);
+            }
+            Self::Scale => {
+                project.scale_index = project.scale_index.next();
+            }
+            Self::Transpose => {
+                project.transpose = (project.transpose + 1).min(12);
+            }
+        }
+    }
+
+    pub fn adjust_down(self, project: &mut crate::project::Project, cursor_row: &mut usize) {
+        match self {
+            Self::Subdivision => {
+                project.subdivision = project.subdivision.saturating_sub(1).max(2);
+            }
+            Self::Step => {
+                project.step = project.step.saturating_sub(1).max(1);
+            }
+            Self::Bpm => {
+                project.bpm = project.bpm.saturating_sub(1).max(20);
+            }
+            Self::PatternLength => {
+                let new_len = project.pattern.rows.saturating_sub(1).max(1);
+                project.pattern.resize(new_len);
+                if *cursor_row >= project.pattern.rows {
+                    *cursor_row = project.pattern.rows - 1;
+                }
+            }
+            Self::Scale => {
+                project.scale_index = project.scale_index.prev();
+            }
+            Self::Transpose => {
+                project.transpose = (project.transpose - 1).max(-12);
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,7 +193,6 @@ pub struct Cursor {
     pub effect_edit_pos: usize,
     pub selection_anchor: Option<(usize, usize)>,
     pub octave: u8,
-    pub synth_channel: usize,
 }
 
 pub struct App {
@@ -136,7 +226,6 @@ impl App {
                 effect_edit_pos: 0,
                 selection_anchor: None,
                 octave: 4,
-                synth_channel: 0,
             },
             mode: Mode::Edit,
             playback: playback::PlaybackState::new(),

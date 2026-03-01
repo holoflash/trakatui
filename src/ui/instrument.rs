@@ -14,7 +14,7 @@ pub fn draw_instrument(ui: &mut egui::Ui, app: &mut App) {
         .inner_margin(egui::Margin::symmetric(12, 10))
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
-            let ch = app.cursor.synth_channel;
+            let ch = app.cursor.channel;
             let cs = &app.project.channel_settings[ch];
             let synth_active = app.mode == Mode::SynthEdit;
 
@@ -200,7 +200,7 @@ fn handle_sample_drop(ui: &mut egui::Ui, app: &mut App) {
             continue;
         }
 
-        let ch = app.cursor.synth_channel;
+        let ch = app.cursor.channel;
 
         if app.project.channel_settings[ch].waveform != Waveform::Sampler {
             app.project.channel_settings[ch].waveform = Waveform::Sampler;

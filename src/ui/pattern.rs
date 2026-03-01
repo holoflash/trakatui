@@ -73,7 +73,7 @@ fn draw_header_row(header: &mut egui_extras::TableRow<'_, '_>, app: &App, channe
         header.col(|ui| {
             draw_left_border(ui);
 
-            let is_synth_channel = app.mode == Mode::SynthEdit && ch == app.cursor.synth_channel;
+            let is_synth_channel = app.mode == Mode::SynthEdit && ch == app.cursor.channel;
             if is_synth_channel {
                 fill_cell(ui, COLOR_PATTERN_CURSOR_BG);
             }
@@ -90,7 +90,7 @@ fn draw_header_row(header: &mut egui_extras::TableRow<'_, '_>, app: &App, channe
             );
         });
         header.col(|ui| {
-            let is_synth_channel = app.mode == Mode::SynthEdit && ch == app.cursor.synth_channel;
+            let is_synth_channel = app.mode == Mode::SynthEdit && ch == app.cursor.channel;
             if is_synth_channel {
                 fill_cell(ui, COLOR_PATTERN_CURSOR_BG);
             }

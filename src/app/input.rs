@@ -49,7 +49,6 @@ impl App {
         if actions.contains(&Action::SwitchToSynth) {
             self.clear_selection();
             self.mode = Mode::SynthEdit;
-            self.cursor.synth_channel = self.cursor.channel;
             self.synth_field = SynthSettingsField::Channel;
             return false;
         }
@@ -71,20 +70,33 @@ impl App {
 
         if actions.contains(&Action::Delete) {
             self.handle_delete();
-        } else if actions.contains(&Action::NoteOff) {
-            if self.cursor.sub_column == SubColumn::Note {
-                self.handle_note_off();
-            }
-        } else if self.handle_transpose(actions) {
-        } else if actions.contains(&Action::OctaveUp) {
+            return false;
+        }
+
+        if actions.contains(&Action::NoteOff) && self.cursor.sub_column == SubColumn::Note {
+            self.handle_note_off();
+            return false;
+        }
+
+        if self.handle_transpose(actions) {
+            return false;
+        }
+
+        if actions.contains(&Action::OctaveUp) {
             if self.cursor.octave < 8 {
                 self.cursor.octave += 1;
             }
-        } else if actions.contains(&Action::OctaveDown) {
+            return false;
+        }
+
+        if actions.contains(&Action::OctaveDown) {
             if self.cursor.octave > 0 {
                 self.cursor.octave -= 1;
             }
-        } else if actions.contains(&Action::Escape) {
+            return false;
+        }
+
+        if actions.contains(&Action::Escape) {
             if self.cursor.selection_anchor.is_some() {
                 self.clear_selection();
             } else if self.playback.playing {
@@ -92,7 +104,10 @@ impl App {
             } else {
                 return true;
             }
-        } else if self.cursor.sub_column == SubColumn::Effect {
+            return false;
+        }
+
+        if self.cursor.sub_column == SubColumn::Effect {
             self.handle_effect_keys(input);
         } else {
             self.handle_note_keys(input);
@@ -517,17 +532,28 @@ impl App {
         }
     }
 
-    fn handle_settings_input(&mut self, actions: &[Action]) {
+    fn handle_mode_switch(&mut self, actions: &[Action]) -> bool {
         if actions.contains(&Action::Escape) {
             if self.playback.playing {
                 self.stop_playback();
             }
             self.mode = Mode::Edit;
-        } else if actions.contains(&Action::SwitchToEdit) {
+            return true;
+        }
+        if actions.contains(&Action::SwitchToEdit) {
             self.mode = Mode::Edit;
-        } else if actions.contains(&Action::SwitchToSynth) {
+            return true;
+        }
+        false
+    }
+
+    fn handle_settings_input(&mut self, actions: &[Action]) {
+        if self.handle_mode_switch(actions) {
+            return;
+        }
+
+        if actions.contains(&Action::SwitchToSynth) {
             self.mode = Mode::SynthEdit;
-            self.cursor.synth_channel = self.cursor.channel;
             self.synth_field = SynthSettingsField::Channel;
         } else if actions.contains(&Action::SwitchToSettings) {
         } else if actions.contains(&Action::SettingsDown) {
@@ -535,66 +561,20 @@ impl App {
         } else if actions.contains(&Action::SettingsUp) {
             self.settings_field = self.settings_field.prev();
         } else if actions.contains(&Action::SettingsIncrease) {
-            match self.settings_field {
-                SettingsField::Subdivision => {
-                    self.project.subdivision = (self.project.subdivision + 1).min(64);
-                }
-                SettingsField::Step => {
-                    self.project.step = (self.project.step + 1).min(64);
-                }
-                SettingsField::Bpm => {
-                    self.project.bpm = (self.project.bpm + 1).min(666);
-                }
-                SettingsField::PatternLength => {
-                    let new_len = (self.project.pattern.rows + 1).min(128);
-                    self.project.pattern.resize(new_len);
-                }
-                SettingsField::Scale => {
-                    self.project.scale_index = self.project.scale_index.next();
-                }
-                SettingsField::Transpose => {
-                    self.project.transpose = (self.project.transpose + 1).min(12);
-                }
-            }
+            self.settings_field
+                .adjust(&mut self.project, &mut self.cursor.row);
         } else if actions.contains(&Action::SettingsDecrease) {
-            match self.settings_field {
-                SettingsField::Subdivision => {
-                    self.project.subdivision = self.project.subdivision.saturating_sub(1).max(2);
-                }
-                SettingsField::Step => {
-                    self.project.step = self.project.step.saturating_sub(1).max(1);
-                }
-                SettingsField::Bpm => {
-                    self.project.bpm = self.project.bpm.saturating_sub(1).max(20);
-                }
-                SettingsField::PatternLength => {
-                    let new_len = self.project.pattern.rows.saturating_sub(1).max(1);
-                    self.project.pattern.resize(new_len);
-                    if self.cursor.row >= self.project.pattern.rows {
-                        self.cursor.row = self.project.pattern.rows - 1;
-                    }
-                }
-                SettingsField::Scale => {
-                    self.project.scale_index = self.project.scale_index.prev();
-                }
-                SettingsField::Transpose => {
-                    self.project.transpose = (self.project.transpose - 1).max(-12);
-                }
-            }
+            self.settings_field
+                .adjust_down(&mut self.project, &mut self.cursor.row);
         }
     }
 
     fn handle_synth_input(&mut self, actions: &[Action]) {
-        let ch = self.cursor.synth_channel;
+        if self.handle_mode_switch(actions) {
+            return;
+        }
 
-        if actions.contains(&Action::Escape) {
-            if self.playback.playing {
-                self.stop_playback();
-            }
-            self.mode = Mode::Edit;
-        } else if actions.contains(&Action::SwitchToEdit) {
-            self.mode = Mode::Edit;
-        } else if actions.contains(&Action::SwitchToSynth) {
+        if actions.contains(&Action::SwitchToSynth) {
         } else if actions.contains(&Action::SwitchToSettings) {
             self.mode = Mode::Settings;
             self.settings_field = SettingsField::Scale;
@@ -603,88 +583,29 @@ impl App {
         } else if actions.contains(&Action::SettingsUp) {
             self.synth_field = self.synth_field.prev();
         } else if actions.contains(&Action::SettingsIncrease) {
-            match self.synth_field {
-                SynthSettingsField::Channel => {
-                    self.cursor.synth_channel =
-                        (self.cursor.synth_channel + 1) % self.project.pattern.channels;
-                }
-                SynthSettingsField::Waveform => {
-                    let cs = &mut self.project.channel_settings[ch];
-                    cs.waveform = cs.waveform.next();
-                    cs.envelope = cs.waveform.default_envelope();
-                    cs.volume = if cs.waveform == Waveform::Sampler {
-                        1.0
-                    } else {
-                        0.5
-                    };
-                }
-                SynthSettingsField::Sample => {}
-                SynthSettingsField::Attack => {
-                    let cs = &mut self.project.channel_settings[ch];
-                    cs.envelope.attack = (cs.envelope.attack + 0.005).min(2.0);
-                }
-                SynthSettingsField::Decay => {
-                    let cs = &mut self.project.channel_settings[ch];
-                    cs.envelope.decay = (cs.envelope.decay + 0.005).min(2.0);
-                }
-                SynthSettingsField::Sustain => {
-                    let cs = &mut self.project.channel_settings[ch];
-                    cs.envelope.sustain = (cs.envelope.sustain + 0.05).min(1.0);
-                }
-                SynthSettingsField::Release => {
-                    let cs = &mut self.project.channel_settings[ch];
-                    cs.envelope.release = (cs.envelope.release + 0.005).min(2.0);
-                }
-                SynthSettingsField::Volume => {
-                    let cs = &mut self.project.channel_settings[ch];
-                    cs.volume = (cs.volume + 0.05).min(1.0);
-                }
+            if self.synth_field == SynthSettingsField::Channel {
+                self.cursor.channel = (self.cursor.channel + 1) % self.project.pattern.channels;
+            } else {
+                let ch = self.cursor.channel;
+                self.synth_field
+                    .adjust(&mut self.project.channel_settings[ch], 1);
             }
         } else if actions.contains(&Action::SettingsDecrease) {
-            match self.synth_field {
-                SynthSettingsField::Channel => {
-                    self.cursor.synth_channel = if self.cursor.synth_channel == 0 {
-                        self.project.pattern.channels - 1
-                    } else {
-                        self.cursor.synth_channel - 1
-                    };
+            if self.synth_field == SynthSettingsField::Channel {
+                if self.cursor.channel == 0 {
+                    self.cursor.channel = self.project.pattern.channels - 1;
+                } else {
+                    self.cursor.channel -= 1;
                 }
-                SynthSettingsField::Waveform => {
-                    let cs = &mut self.project.channel_settings[ch];
-                    cs.waveform = cs.waveform.prev();
-                    cs.envelope = cs.waveform.default_envelope();
-                    cs.volume = if cs.waveform == Waveform::Sampler {
-                        1.0
-                    } else {
-                        0.5
-                    };
-                }
-                SynthSettingsField::Sample => {}
-                SynthSettingsField::Attack => {
-                    let cs = &mut self.project.channel_settings[ch];
-                    cs.envelope.attack = (cs.envelope.attack - 0.005).max(0.0);
-                }
-                SynthSettingsField::Decay => {
-                    let cs = &mut self.project.channel_settings[ch];
-                    cs.envelope.decay = (cs.envelope.decay - 0.005).max(0.0);
-                }
-                SynthSettingsField::Sustain => {
-                    let cs = &mut self.project.channel_settings[ch];
-                    cs.envelope.sustain = (cs.envelope.sustain - 0.05).max(0.0);
-                }
-                SynthSettingsField::Release => {
-                    let cs = &mut self.project.channel_settings[ch];
-                    cs.envelope.release = (cs.envelope.release - 0.005).max(0.0);
-                }
-                SynthSettingsField::Volume => {
-                    let cs = &mut self.project.channel_settings[ch];
-                    cs.volume = (cs.volume - 0.05).max(0.0);
-                }
+            } else {
+                let ch = self.cursor.channel;
+                self.synth_field
+                    .adjust(&mut self.project.channel_settings[ch], -1);
             }
-        } else if self.project.channel_settings[ch].waveform == Waveform::Sampler
+        } else if self.project.channel_settings[self.cursor.channel].waveform == Waveform::Sampler
             && actions.contains(&Action::LoadSample)
         {
-            self.load_sample_for_channel(ch);
+            self.load_sample_for_channel(self.cursor.channel);
         }
     }
 
