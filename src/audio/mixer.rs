@@ -378,7 +378,7 @@ impl TrackerSource {
                     let gate_rows = pattern.gate_rows(ch_idx, self.current_row);
                     let gate_samples = samples_per_row * gate_rows as u32;
                     let release_samples = (cs.envelope.release * SAMPLE_RATE_F).round() as u32;
-                    let vol = volume.map_or(cs.volume, |v| v as f32 / 64.0);
+                    let vol = volume.map_or(cs.volume, |v| v.min(64) as f32 / 64.0);
 
                     channel.trigger(
                         note.frequency(),
@@ -391,6 +391,10 @@ impl TrackerSource {
                 }
                 Cell::NoteOff => channel.note_off(),
                 Cell::Empty => {}
+            }
+
+            if let Some(v) = volume {
+                channel.volume = v.min(64) as f32 / 64.0;
             }
 
             match effect {
