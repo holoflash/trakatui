@@ -185,6 +185,7 @@ impl SettingsField {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SubColumn {
     Note,
+    Volume,
     Effect,
 }
 
@@ -193,6 +194,7 @@ pub struct Cursor {
     pub row: usize,
     pub sub_column: SubColumn,
     pub effect_edit_pos: usize,
+    pub volume_edit_pos: usize,
     pub selection_anchor: Option<(usize, usize)>,
     pub octave: u8,
 }
@@ -227,6 +229,7 @@ impl App {
                 row: 0,
                 sub_column: SubColumn::Note,
                 effect_edit_pos: 0,
+                volume_edit_pos: 0,
                 selection_anchor: None,
                 octave: 4,
             },

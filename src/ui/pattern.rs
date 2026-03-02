@@ -2,7 +2,7 @@ use eframe::egui::{self, FontId, RichText, Stroke};
 use egui_extras::{Column, TableBuilder};
 
 use crate::app::{App, Mode, SubColumn};
-use crate::project::{Cell, effect_display};
+use crate::project::{Cell, effect_display, volume_display};
 
 use super::{
     COLOR_LAYOUT_BG_DARK, COLOR_PATTERN_CURSOR_BG, COLOR_PATTERN_CURSOR_TEXT, COLOR_PATTERN_EFFECT,
@@ -49,7 +49,7 @@ pub fn draw_pattern(ctx: &egui::Context, app: &mut App) {
                 .column(col);
 
             for _ in 0..channels {
-                table = table.column(col).column(col);
+                table = table.column(col).column(col).column(col);
             }
 
             table
@@ -88,6 +88,13 @@ fn draw_header_row(header: &mut egui_extras::TableRow<'_, '_>, app: &App, channe
                         COLOR_TEXT_DIM
                     }),
             );
+        });
+        header.col(|ui| {
+            let is_synth_channel = app.mode == Mode::SynthEdit && ch == app.cursor.channel;
+            if is_synth_channel {
+                fill_cell(ui, COLOR_PATTERN_CURSOR_BG);
+            }
+            ui.add_space(CELL_PAD);
         });
         header.col(|ui| {
             let is_synth_channel = app.mode == Mode::SynthEdit && ch == app.cursor.channel;
@@ -135,14 +142,17 @@ fn draw_body_row(row: &mut egui_extras::TableRow<'_, '_>, app: &mut App, channel
         let is_cursor_ch_row =
             app.mode == Mode::Edit && ch == app.cursor.channel && row_idx == app.cursor.row;
         let is_cursor_note = is_cursor_ch_row && app.cursor.sub_column == SubColumn::Note;
+        let is_cursor_volume = is_cursor_ch_row && app.cursor.sub_column == SubColumn::Volume;
         let is_cursor_effect = is_cursor_ch_row && app.cursor.sub_column == SubColumn::Effect;
         let in_selection = sel_bounds.is_some_and(|(min_ch, max_ch, min_row, max_row)| {
             ch >= min_ch && ch <= max_ch && row_idx >= min_row && row_idx <= max_row
         });
         let is_note_selected = in_selection && app.cursor.sub_column == SubColumn::Note;
+        let is_vol_selected = in_selection && app.cursor.sub_column == SubColumn::Volume;
         let is_fx_selected = in_selection && app.cursor.sub_column == SubColumn::Effect;
 
         let cell = app.project.pattern.get(ch, row_idx);
+        let volume_val = app.project.pattern.get_volume(ch, row_idx);
         let effect_cmd = app.project.pattern.get_effect(ch, row_idx);
 
         row.col(|ui| {
@@ -186,6 +196,48 @@ fn draw_body_row(row: &mut egui_extras::TableRow<'_, '_>, app: &mut App, channel
 
             if response.clicked() {
                 app.cursor.sub_column = SubColumn::Note;
+                app.set_cursor(ch, row_idx);
+                if app.mode != Mode::Edit {
+                    app.mode = Mode::Edit;
+                }
+            }
+        });
+
+        row.col(|ui| {
+            let vol_bg = if is_cursor_volume {
+                COLOR_PATTERN_CURSOR_BG
+            } else if is_vol_selected {
+                COLOR_PATTERN_SELECTION_BG
+            } else {
+                row_bg
+            };
+
+            fill_cell(ui, vol_bg);
+
+            let vol_text = volume_display(volume_val);
+
+            let vol_color = if is_cursor_volume {
+                COLOR_PATTERN_CURSOR_TEXT
+            } else if is_vol_selected {
+                COLOR_PATTERN_SELECTION_TEXT
+            } else if is_playback_row {
+                COLOR_PATTERN_PLAYBACK_TEXT
+            } else {
+                COLOR_PATTERN_EFFECT
+            };
+
+            let mut vol_rt = RichText::new(&vol_text).font(FONT).color(vol_color);
+            if is_cursor_volume {
+                vol_rt = vol_rt.strong();
+            }
+
+            ui.add_space(CELL_PAD_HALF);
+            let response = ui.label(vol_rt);
+            ui.add_space(CELL_PAD_HALF);
+
+            if response.clicked() {
+                app.cursor.sub_column = SubColumn::Volume;
+                app.cursor.volume_edit_pos = 0;
                 app.set_cursor(ch, row_idx);
                 if app.mode != Mode::Edit {
                     app.mode = Mode::Edit;

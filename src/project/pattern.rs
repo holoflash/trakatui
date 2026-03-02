@@ -13,6 +13,13 @@ pub fn effect_display(cmd: EffectCommand) -> String {
     }
 }
 
+pub fn volume_display(vol: Option<u8>) -> String {
+    match vol {
+        Some(v) => format!("{:02X}", v),
+        None => "··".to_string(),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Note {
     pub pitch: u8,
@@ -50,6 +57,7 @@ pub struct Pattern {
     pub channels: usize,
     pub rows: usize,
     pub data: Vec<Vec<Cell>>,
+    pub volumes: Vec<Vec<Option<u8>>>,
     pub effects: Vec<Vec<EffectCommand>>,
 }
 
@@ -59,6 +67,7 @@ impl Pattern {
             channels,
             rows,
             data: vec![vec![Cell::Empty; rows]; channels],
+            volumes: vec![vec![None; rows]; channels],
             effects: vec![vec![None; rows]; channels],
         }
     }
@@ -87,10 +96,25 @@ impl Pattern {
         self.effects[channel][row] = None;
     }
 
+    pub fn get_volume(&self, channel: usize, row: usize) -> Option<u8> {
+        self.volumes[channel][row]
+    }
+
+    pub fn set_volume(&mut self, channel: usize, row: usize, vol: Option<u8>) {
+        self.volumes[channel][row] = vol;
+    }
+
+    pub fn clear_volume(&mut self, channel: usize, row: usize) {
+        self.volumes[channel][row] = None;
+    }
+
     pub fn resize(&mut self, new_rows: usize) {
         if new_rows > self.data[0].len() {
             for ch in &mut self.data {
                 ch.resize(new_rows, Cell::Empty);
+            }
+            for ch in &mut self.volumes {
+                ch.resize(new_rows, None);
             }
             for ch in &mut self.effects {
                 ch.resize(new_rows, None);

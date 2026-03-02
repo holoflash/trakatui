@@ -46,6 +46,7 @@ pub struct PatternSnapshot {
     pub channels: usize,
     pub rows: usize,
     data: Vec<Vec<Cell>>,
+    volumes: Vec<Vec<Option<u8>>>,
     effects: Vec<Vec<Option<Effect>>>,
 }
 
@@ -55,6 +56,7 @@ impl PatternSnapshot {
             channels: pattern.channels,
             rows: pattern.rows,
             data: pattern.data.clone(),
+            volumes: pattern.volumes.clone(),
             effects: pattern.effects.clone(),
         }
     }
@@ -367,6 +369,7 @@ impl TrackerSource {
         for ch_idx in 0..pattern.channels.min(self.channels.len()) {
             let cs = &settings.channel_settings[ch_idx % settings.channel_settings.len()];
             let effect = pattern.effects[ch_idx][self.current_row];
+            let volume = pattern.volumes[ch_idx][self.current_row];
             let cell = pattern.data[ch_idx][self.current_row];
             let channel = &mut self.channels[ch_idx];
 
@@ -375,11 +378,12 @@ impl TrackerSource {
                     let gate_rows = pattern.gate_rows(ch_idx, self.current_row);
                     let gate_samples = samples_per_row * gate_rows as u32;
                     let release_samples = (cs.envelope.release * SAMPLE_RATE_F).round() as u32;
+                    let vol = volume.map_or(cs.volume, |v| v as f32 / 64.0);
 
                     channel.trigger(
                         note.frequency(),
                         cs.waveform,
-                        cs.volume,
+                        vol,
                         cs.envelope,
                         &cs.sample_data,
                         gate_samples + release_samples,

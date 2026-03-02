@@ -4,7 +4,7 @@ pub mod pattern;
 pub mod sample;
 
 pub use channel::{ChannelSettings, Envelope, Waveform};
-pub use pattern::{Cell, Effect, Note, Pattern, effect_display};
+pub use pattern::{Cell, Effect, Note, Pattern, effect_display, volume_display};
 pub use sample::SampleData;
 
 use crate::app::scale::ScaleIndex;

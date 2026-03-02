@@ -110,6 +110,8 @@ impl App {
 
         if self.cursor.sub_column == SubColumn::Effect {
             self.handle_effect_keys(input);
+        } else if self.cursor.sub_column == SubColumn::Volume {
+            self.handle_volume_keys(input);
         } else {
             self.handle_note_keys(input);
         }
@@ -140,7 +142,7 @@ impl App {
             _ => unreachable!(),
         };
 
-        let on_note = self.cursor.sub_column == SubColumn::Note;
+        let on_note = self.cursor.sub_column;
 
         if let Some((min_ch, max_ch, min_row, max_row)) = self.selection_bounds() {
             let in_bounds = min_row.checked_add_signed(dr).is_some()
@@ -157,22 +159,23 @@ impl App {
                 for ch in min_ch..=max_ch {
                     for row in min_row..=max_row {
                         let cell = self.project.pattern.get(ch, row);
+                        let vol = self.project.pattern.get_volume(ch, row);
                         let fx = self.project.pattern.get_effect(ch, row);
-                        cells.push((ch, row, cell, fx));
-                        if on_note {
-                            self.project.pattern.clear(ch, row);
-                        } else {
-                            self.project.pattern.clear_effect(ch, row);
+                        cells.push((ch, row, cell, vol, fx));
+                        match on_note {
+                            SubColumn::Note => self.project.pattern.clear(ch, row),
+                            SubColumn::Volume => self.project.pattern.clear_volume(ch, row),
+                            SubColumn::Effect => self.project.pattern.clear_effect(ch, row),
                         }
                     }
                 }
-                for (ch, row, cell, fx) in cells {
+                for (ch, row, cell, vol, fx) in cells {
                     let new_ch = ch.checked_add_signed(dc).unwrap();
                     let new_row = row.checked_add_signed(dr).unwrap();
-                    if on_note {
-                        self.project.pattern.set(new_ch, new_row, cell);
-                    } else {
-                        self.project.pattern.set_effect(new_ch, new_row, fx);
+                    match on_note {
+                        SubColumn::Note => self.project.pattern.set(new_ch, new_row, cell),
+                        SubColumn::Volume => self.project.pattern.set_volume(new_ch, new_row, vol),
+                        SubColumn::Effect => self.project.pattern.set_effect(new_ch, new_row, fx),
                     }
                 }
                 self.cursor.channel = self.cursor.channel.checked_add_signed(dc).unwrap();
@@ -188,7 +191,7 @@ impl App {
         ) && new_row < self.project.pattern.rows
             && new_ch < self.project.pattern.channels
         {
-            if on_note {
+            if on_note == SubColumn::Note {
                 let cell = self
                     .project
                     .pattern
@@ -197,6 +200,15 @@ impl App {
                     .pattern
                     .clear(self.cursor.channel, self.cursor.row);
                 self.project.pattern.set(new_ch, new_row, cell);
+            } else if on_note == SubColumn::Volume {
+                let vol = self
+                    .project
+                    .pattern
+                    .get_volume(self.cursor.channel, self.cursor.row);
+                self.project
+                    .pattern
+                    .clear_volume(self.cursor.channel, self.cursor.row);
+                self.project.pattern.set_volume(new_ch, new_row, vol);
             } else {
                 let fx = self
                     .project
@@ -273,18 +285,25 @@ impl App {
             }
             Action::CursorLeft => {
                 if self.cursor.sub_column == SubColumn::Effect {
+                    self.cursor.sub_column = SubColumn::Volume;
+                    self.cursor.volume_edit_pos = 0;
+                } else if self.cursor.sub_column == SubColumn::Volume {
                     self.cursor.sub_column = SubColumn::Note;
                 } else if self.cursor.channel > 0 {
                     self.cursor.channel -= 1;
                     self.cursor.sub_column = SubColumn::Effect;
+                    self.cursor.effect_edit_pos = 0;
                 } else {
                     self.cursor.channel = self.project.pattern.channels - 1;
                     self.cursor.sub_column = SubColumn::Effect;
+                    self.cursor.effect_edit_pos = 0;
                 }
-                self.cursor.effect_edit_pos = 0;
             }
             Action::CursorRight => {
                 if self.cursor.sub_column == SubColumn::Note {
+                    self.cursor.sub_column = SubColumn::Volume;
+                    self.cursor.volume_edit_pos = 0;
+                } else if self.cursor.sub_column == SubColumn::Volume {
                     self.cursor.sub_column = SubColumn::Effect;
                     self.cursor.effect_edit_pos = 0;
                 } else if self.cursor.channel < self.project.pattern.channels - 1 {
@@ -317,23 +336,32 @@ impl App {
         if let Some((min_ch, max_ch, min_row, max_row)) = self.selection_bounds() {
             for ch in min_ch..=max_ch {
                 for row in min_row..=max_row {
-                    if self.cursor.sub_column == SubColumn::Note {
-                        self.project.pattern.clear(ch, row);
-                    } else {
-                        self.project.pattern.clear_effect(ch, row);
+                    match self.cursor.sub_column {
+                        SubColumn::Note => self.project.pattern.clear(ch, row),
+                        SubColumn::Volume => self.project.pattern.clear_volume(ch, row),
+                        SubColumn::Effect => self.project.pattern.clear_effect(ch, row),
                     }
                 }
             }
             self.clear_selection();
-        } else if self.cursor.sub_column == SubColumn::Effect {
-            self.project
-                .pattern
-                .clear_effect(self.cursor.channel, self.cursor.row);
-            self.cursor.row = self.cursor.row.wrapping_sub(1) % self.project.pattern.rows;
         } else {
-            self.project
-                .pattern
-                .clear(self.cursor.channel, self.cursor.row);
+            match self.cursor.sub_column {
+                SubColumn::Note => {
+                    self.project
+                        .pattern
+                        .clear(self.cursor.channel, self.cursor.row);
+                }
+                SubColumn::Volume => {
+                    self.project
+                        .pattern
+                        .clear_volume(self.cursor.channel, self.cursor.row);
+                }
+                SubColumn::Effect => {
+                    self.project
+                        .pattern
+                        .clear_effect(self.cursor.channel, self.cursor.row);
+                }
+            }
             self.cursor.row = self.cursor.row.wrapping_sub(1) % self.project.pattern.rows;
         }
     }
@@ -511,6 +539,53 @@ impl App {
                     self.cursor.effect_edit_pos = pos + 1;
                 } else {
                     self.cursor.effect_edit_pos = 0;
+                    self.clear_selection();
+                    self.advance_cursor();
+                }
+                break;
+            }
+        }
+    }
+
+    fn handle_volume_keys(&mut self, input: &egui::InputState) {
+        let hex_keys = [
+            (Key::Num0, 0x0),
+            (Key::Num1, 0x1),
+            (Key::Num2, 0x2),
+            (Key::Num3, 0x3),
+            (Key::Num4, 0x4),
+            (Key::Num5, 0x5),
+            (Key::Num6, 0x6),
+            (Key::Num7, 0x7),
+            (Key::Num8, 0x8),
+            (Key::Num9, 0x9),
+            (Key::A, 0xA),
+            (Key::B, 0xB),
+            (Key::C, 0xC),
+            (Key::D, 0xD),
+            (Key::E, 0xE),
+            (Key::F, 0xF),
+        ];
+
+        for &(key, value) in &hex_keys {
+            if input.key_pressed(key) {
+                let ch = self.cursor.channel;
+                let row = self.cursor.row;
+                let pos = self.cursor.volume_edit_pos;
+
+                let mut vol = self.project.pattern.get_volume(ch, row).unwrap_or(0);
+
+                match pos {
+                    0 => vol = (value << 4) | (vol & 0x0F),
+                    _ => vol = (vol & 0xF0) | value,
+                }
+
+                self.project.pattern.set_volume(ch, row, Some(vol));
+
+                if pos < 1 {
+                    self.cursor.volume_edit_pos = pos + 1;
+                } else {
+                    self.cursor.volume_edit_pos = 0;
                     self.clear_selection();
                     self.advance_cursor();
                 }
