@@ -4,7 +4,7 @@ pub mod playback;
 pub mod scale;
 
 use crate::app::keybindings::KeyBindings;
-use crate::project::{ChannelSettings, Waveform};
+use crate::project::ChannelSettings;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicUsize};
@@ -28,7 +28,6 @@ pub enum SynthSettingsField {
     Decay,
     Sustain,
     Release,
-    Volume,
 }
 
 impl SynthSettingsField {
@@ -40,21 +39,19 @@ impl SynthSettingsField {
             Self::Attack => Self::Decay,
             Self::Decay => Self::Sustain,
             Self::Sustain => Self::Release,
-            Self::Release => Self::Volume,
-            Self::Volume => Self::Channel,
+            Self::Release => Self::Channel,
         }
     }
 
     pub const fn prev(self) -> Self {
         match self {
-            Self::Channel => Self::Volume,
+            Self::Channel => Self::Release,
             Self::Waveform => Self::Channel,
             Self::Sample => Self::Waveform,
             Self::Attack => Self::Sample,
             Self::Decay => Self::Attack,
             Self::Sustain => Self::Decay,
             Self::Release => Self::Sustain,
-            Self::Volume => Self::Release,
         }
     }
 
@@ -68,11 +65,6 @@ impl SynthSettingsField {
                     cs.waveform.prev()
                 };
                 cs.envelope = cs.waveform.default_envelope();
-                cs.volume = if cs.waveform == Waveform::Sampler {
-                    1.0
-                } else {
-                    0.5
-                };
             }
             Self::Sample => {}
             Self::Attack => {
@@ -89,9 +81,6 @@ impl SynthSettingsField {
             Self::Release => {
                 cs.envelope.release =
                     (cs.envelope.release + 0.005 * f32::from(delta)).clamp(0.0, 2.0);
-            }
-            Self::Volume => {
-                cs.volume = (cs.volume + 0.05 * f32::from(delta)).clamp(0.0, 1.0);
             }
         }
     }

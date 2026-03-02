@@ -100,13 +100,6 @@ pub fn draw_instrument(ui: &mut egui::Ui, app: &mut App) {
                 &format!("{:.3}", cs.envelope.release),
                 synth_active && app.synth_field == SynthSettingsField::Release,
             );
-            ui.add_space(6.0);
-            settings_row(
-                ui,
-                "Volume",
-                &format!("{:.2}", cs.volume),
-                synth_active && app.synth_field == SynthSettingsField::Volume,
-            );
         });
 }
 

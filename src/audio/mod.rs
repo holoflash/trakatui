@@ -154,7 +154,7 @@ impl AudioEngine {
         let _ = self.sender.send(Command::PreviewNote {
             frequency: freq,
             waveform: cs.waveform,
-            volume: cs.volume,
+            volume: 1.0,
             envelope: cs.envelope,
             sample_data: cs.sample_data.clone(),
             master_volume,

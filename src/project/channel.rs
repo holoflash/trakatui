@@ -152,21 +152,14 @@ pub struct Envelope {
 pub struct ChannelSettings {
     pub waveform: Waveform,
     pub envelope: Envelope,
-    pub volume: f32,
     pub sample_data: Option<Arc<SampleData>>,
 }
 
 impl ChannelSettings {
     pub fn default_for(waveform: Waveform) -> Self {
-        let volume = if waveform == Waveform::Sampler {
-            1.0
-        } else {
-            0.5
-        };
         Self {
             envelope: waveform.default_envelope(),
             waveform,
-            volume,
             sample_data: None,
         }
     }
