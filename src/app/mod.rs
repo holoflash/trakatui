@@ -21,7 +21,7 @@ pub enum Mode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SynthSettingsField {
-    Channel,
+    Instrument,
     Waveform,
     Sample,
     Attack,
@@ -33,20 +33,20 @@ pub enum SynthSettingsField {
 impl SynthSettingsField {
     pub const fn next(self) -> Self {
         match self {
-            Self::Channel => Self::Waveform,
+            Self::Instrument => Self::Waveform,
             Self::Waveform => Self::Sample,
             Self::Sample => Self::Attack,
             Self::Attack => Self::Decay,
             Self::Decay => Self::Sustain,
             Self::Sustain => Self::Release,
-            Self::Release => Self::Channel,
+            Self::Release => Self::Instrument,
         }
     }
 
     pub const fn prev(self) -> Self {
         match self {
-            Self::Channel => Self::Release,
-            Self::Waveform => Self::Channel,
+            Self::Instrument => Self::Release,
+            Self::Waveform => Self::Instrument,
             Self::Sample => Self::Waveform,
             Self::Attack => Self::Sample,
             Self::Decay => Self::Attack,
@@ -57,7 +57,7 @@ impl SynthSettingsField {
 
     pub fn adjust(self, inst: &mut Instrument, delta: i16) {
         match self {
-            Self::Channel => {}
+            Self::Instrument => {}
             Self::Waveform => {
                 inst.waveform = if delta > 0 {
                     inst.waveform.next()
@@ -204,6 +204,7 @@ pub struct App {
     pub display_peak: f32,
     pub settings_field: SettingsField,
     pub synth_field: SynthSettingsField,
+    pub current_instrument: usize,
     pub status_message: Option<String>,
     pub keybindings: KeyBindings,
     pub show_controls_modal: bool,
@@ -237,6 +238,7 @@ impl App {
             display_peak: 0.0,
             settings_field: SettingsField::Scale,
             synth_field: SynthSettingsField::Waveform,
+            current_instrument: 0,
             status_message: None,
             keybindings: KeyBindings::defaults(),
             show_controls_modal: false,

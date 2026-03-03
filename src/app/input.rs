@@ -50,7 +50,7 @@ impl App {
         if actions.contains(&Action::SwitchToSynth) {
             self.clear_selection();
             self.mode = Mode::SynthEdit;
-            self.synth_field = SynthSettingsField::Channel;
+            self.synth_field = SynthSettingsField::Instrument;
             return false;
         }
 
@@ -530,7 +530,7 @@ impl App {
                     if !self.playback.playing {
                         self.audio.preview_note(
                             note.frequency(),
-                            self.cursor.channel,
+                            self.current_instrument,
                             &self.project.instruments,
                             self.project.master_volume_linear(),
                         );
@@ -735,7 +735,7 @@ impl App {
 
         if actions.contains(&Action::SwitchToSynth) {
             self.mode = Mode::SynthEdit;
-            self.synth_field = SynthSettingsField::Channel;
+            self.synth_field = SynthSettingsField::Instrument;
         } else if actions.contains(&Action::SwitchToSettings) {
         } else if actions.contains(&Action::SettingsDown) {
             self.settings_field = self.settings_field.next();
@@ -764,34 +764,34 @@ impl App {
         } else if actions.contains(&Action::SettingsUp) {
             self.synth_field = self.synth_field.prev();
         } else if actions.contains(&Action::SettingsIncrease) {
-            if self.synth_field == SynthSettingsField::Channel {
-                self.cursor.channel =
-                    (self.cursor.channel + 1) % self.project.current_pattern().channels;
+            if self.synth_field == SynthSettingsField::Instrument {
+                self.current_instrument =
+                    (self.current_instrument + 1) % self.project.instruments.len();
             } else {
-                let ch = self.cursor.channel;
+                let idx = self.current_instrument;
                 self.synth_field
-                    .adjust(&mut self.project.instruments[ch], 1);
+                    .adjust(&mut self.project.instruments[idx], 1);
             }
         } else if actions.contains(&Action::SettingsDecrease) {
-            if self.synth_field == SynthSettingsField::Channel {
-                if self.cursor.channel == 0 {
-                    self.cursor.channel = self.project.current_pattern().channels - 1;
+            if self.synth_field == SynthSettingsField::Instrument {
+                if self.current_instrument == 0 {
+                    self.current_instrument = self.project.instruments.len() - 1;
                 } else {
-                    self.cursor.channel -= 1;
+                    self.current_instrument -= 1;
                 }
             } else {
-                let ch = self.cursor.channel;
+                let idx = self.current_instrument;
                 self.synth_field
-                    .adjust(&mut self.project.instruments[ch], -1);
+                    .adjust(&mut self.project.instruments[idx], -1);
             }
-        } else if self.project.instruments[self.cursor.channel].waveform == Waveform::Sampler
+        } else if self.project.instruments[self.current_instrument].waveform == Waveform::Sampler
             && actions.contains(&Action::LoadSample)
         {
-            self.load_sample_for_channel(self.cursor.channel);
+            self.load_sample_for_instrument(self.current_instrument);
         }
     }
 
-    fn load_sample_for_channel(&mut self, ch: usize) {
+    fn load_sample_for_instrument(&mut self, inst_idx: usize) {
         let mut dialog = rfd::FileDialog::new()
             .add_filter("Audio Files", &["wav"])
             .set_title("Load Sample");
@@ -803,7 +803,7 @@ impl App {
         if let Some(path) = dialog.pick_file()
             && let Ok(data) = SampleData::load_from_path(&path)
         {
-            self.project.instruments[ch].sample_data = Some(data);
+            self.project.instruments[inst_idx].sample_data = Some(data);
         }
     }
 }

@@ -8,7 +8,7 @@ use super::{
     COLOR_LAYOUT_BG_DARK, COLOR_PATTERN_CURSOR_BG, COLOR_PATTERN_CURSOR_TEXT, COLOR_PATTERN_EFFECT,
     COLOR_PATTERN_NOTE, COLOR_PATTERN_NOTE_OFF, COLOR_PATTERN_PLAYBACK_HIGHLIGHT,
     COLOR_PATTERN_PLAYBACK_TEXT, COLOR_PATTERN_SELECTION_BG, COLOR_PATTERN_SELECTION_TEXT,
-    COLOR_PATTERN_SUBDIVISION, COLOR_TEXT_ACTIVE, COLOR_TEXT_DIM,
+    COLOR_PATTERN_SUBDIVISION, COLOR_TEXT_DIM,
 };
 
 const FONT: FontId = FontId::monospace(14.0);
@@ -54,7 +54,7 @@ pub fn draw_pattern(ctx: &egui::Context, app: &mut App) {
 
             table
                 .header(ROW_HEIGHT, |mut header| {
-                    draw_header_row(&mut header, app, channels);
+                    draw_header_row(&mut header, channels);
                 })
                 .body(|body| {
                     body.rows(ROW_HEIGHT, app.project.current_pattern().rows, |mut row| {
@@ -64,7 +64,7 @@ pub fn draw_pattern(ctx: &egui::Context, app: &mut App) {
         });
 }
 
-fn draw_header_row(header: &mut egui_extras::TableRow<'_, '_>, app: &App, channels: usize) {
+fn draw_header_row(header: &mut egui_extras::TableRow<'_, '_>, channels: usize) {
     header.col(|ui| {
         ui.add_space(CELL_PAD);
     });
@@ -73,43 +73,18 @@ fn draw_header_row(header: &mut egui_extras::TableRow<'_, '_>, app: &App, channe
         header.col(|ui| {
             draw_left_border(ui);
 
-            let is_synth_channel = app.mode == Mode::SynthEdit && ch == app.cursor.channel;
-            if is_synth_channel {
-                fill_cell(ui, COLOR_PATTERN_CURSOR_BG);
-            }
-
             ui.add_space(CELL_PAD);
             ui.label(
                 RichText::new(format!("{}", ch + 1))
                     .font(FONT)
-                    .color(if is_synth_channel {
-                        COLOR_TEXT_ACTIVE
-                    } else {
-                        COLOR_TEXT_DIM
-                    }),
+                    .color(COLOR_TEXT_DIM),
             );
         });
-        header.col(|ui| {
-            let is_synth_channel = app.mode == Mode::SynthEdit && ch == app.cursor.channel;
-            if is_synth_channel {
-                fill_cell(ui, COLOR_PATTERN_CURSOR_BG);
-            }
-            ui.add_space(CELL_PAD);
-        });
-        header.col(|ui| {
-            let is_synth_channel = app.mode == Mode::SynthEdit && ch == app.cursor.channel;
-            if is_synth_channel {
-                fill_cell(ui, COLOR_PATTERN_CURSOR_BG);
-            }
-            ui.add_space(CELL_PAD);
-        });
-        header.col(|ui| {
-            let is_synth_channel = app.mode == Mode::SynthEdit && ch == app.cursor.channel;
-            if is_synth_channel {
-                fill_cell(ui, COLOR_PATTERN_CURSOR_BG);
-            }
-            ui.add_space(CELL_PAD);
-        });
+        for _ in 0..3 {
+            header.col(|ui| {
+                ui.add_space(CELL_PAD);
+            });
+        }
     }
 }
 
@@ -136,7 +111,7 @@ fn draw_body_row(row: &mut egui_extras::TableRow<'_, '_>, app: &mut App, channel
         fill_cell(ui, row_bg);
         ui.add_space(CELL_PAD);
         ui.label(
-            RichText::new(format!("{:02}", row_idx + 1))
+            RichText::new(format!("{:02}", row_idx))
                 .font(FONT)
                 .color(row_text_color),
         );

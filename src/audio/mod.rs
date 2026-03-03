@@ -156,11 +156,11 @@ impl AudioEngine {
     pub fn preview_note(
         &self,
         freq: f32,
-        channel: usize,
+        instrument_idx: usize,
         instruments: &[Instrument],
         master_volume: f32,
     ) {
-        let cs = &instruments[channel % instruments.len()];
+        let cs = &instruments[instrument_idx % instruments.len()];
         let _ = self.sender.send(Command::PreviewNote {
             frequency: freq,
             waveform: cs.waveform,

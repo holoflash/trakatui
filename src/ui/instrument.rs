@@ -14,8 +14,8 @@ pub fn draw_instrument(ui: &mut egui::Ui, app: &mut App) {
         .inner_margin(egui::Margin::symmetric(12, 10))
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
-            let ch = app.cursor.channel;
-            let cs = &app.project.instruments[ch];
+            let inst_idx = app.current_instrument;
+            let cs = &app.project.instruments[inst_idx];
             let synth_active = app.mode == Mode::SynthEdit;
 
             ui.label(
@@ -36,9 +36,9 @@ pub fn draw_instrument(ui: &mut egui::Ui, app: &mut App) {
 
             settings_row(
                 ui,
-                "Channel",
-                &format!("{}", ch + 1),
-                synth_active && app.synth_field == SynthSettingsField::Channel,
+                "Instrument",
+                &format!("{:02X}", inst_idx),
+                synth_active && app.synth_field == SynthSettingsField::Instrument,
             );
             ui.add_space(6.0);
             settings_row(
@@ -193,14 +193,14 @@ fn handle_sample_drop(ui: &mut egui::Ui, app: &mut App) {
             continue;
         }
 
-        let ch = app.cursor.channel;
+        let idx = app.current_instrument;
 
-        if app.project.instruments[ch].waveform != Waveform::Sampler {
-            app.project.instruments[ch].waveform = Waveform::Sampler;
+        if app.project.instruments[idx].waveform != Waveform::Sampler {
+            app.project.instruments[idx].waveform = Waveform::Sampler;
         }
 
         if let Ok(data) = SampleData::load_from_path(&path) {
-            app.project.instruments[ch].sample_data = Some(data);
+            app.project.instruments[idx].sample_data = Some(data);
         }
     }
 }

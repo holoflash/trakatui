@@ -8,8 +8,8 @@ use eframe::egui::{self, Color32, Stroke};
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1100.0, 700.0])
-            .with_min_inner_size([800.0, 500.0])
+            .with_inner_size([1350.0, 720.0])
+            .with_min_inner_size([750.0, 400.0])
             .with_title("psikat")
             .with_icon(make_icon()),
         ..Default::default()
