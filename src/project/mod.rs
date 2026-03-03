@@ -27,7 +27,7 @@ pub struct Project {
 impl Project {
     pub fn new() -> Self {
         Self {
-            patterns: vec![Pattern::new(8, 32)],
+            patterns: vec![Pattern::new(6, 32)],
             order: vec![0],
             current_order_idx: 0,
             instruments: Instrument::defaults(),
