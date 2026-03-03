@@ -127,13 +127,32 @@ fn draw_body_row(row: &mut egui_extras::TableRow<'_, '_>, app: &mut App, channel
         let is_cursor_inst = is_cursor_ch_row && app.cursor.sub_column == SubColumn::Instrument;
         let is_cursor_volume = is_cursor_ch_row && app.cursor.sub_column == SubColumn::Volume;
         let is_cursor_effect = is_cursor_ch_row && app.cursor.sub_column == SubColumn::Effect;
-        let in_selection = sel_bounds.is_some_and(|(min_ch, max_ch, min_row, max_row)| {
-            ch >= min_ch && ch <= max_ch && row_idx >= min_row && row_idx <= max_row
-        });
-        let is_note_selected = in_selection && app.cursor.sub_column == SubColumn::Note;
-        let is_inst_selected = in_selection && app.cursor.sub_column == SubColumn::Instrument;
-        let is_vol_selected = in_selection && app.cursor.sub_column == SubColumn::Volume;
-        let is_fx_selected = in_selection && app.cursor.sub_column == SubColumn::Effect;
+        let in_selection =
+            sel_bounds.is_some_and(|(min_ch, max_ch, min_row, max_row, _min_sub, _max_sub)| {
+                if row_idx < min_row || row_idx > max_row {
+                    return false;
+                }
+                if ch < min_ch || ch > max_ch {
+                    return false;
+                }
+                true
+            });
+        let sub_selected = |sub: SubColumn| -> bool {
+            if !in_selection {
+                return false;
+            }
+            let Some((min_ch, max_ch, _min_row, _max_row, min_sub, max_sub)) = sel_bounds else {
+                return false;
+            };
+            let flat = ch * 4 + sub as usize;
+            let sel_start = min_ch * 4 + min_sub as usize;
+            let sel_end = max_ch * 4 + max_sub as usize;
+            flat >= sel_start && flat <= sel_end
+        };
+        let is_note_selected = sub_selected(SubColumn::Note);
+        let is_inst_selected = sub_selected(SubColumn::Instrument);
+        let is_vol_selected = sub_selected(SubColumn::Volume);
+        let is_fx_selected = sub_selected(SubColumn::Effect);
 
         let cell = app.project.current_pattern().get(ch, row_idx);
         let inst_val = app.project.current_pattern().get_instrument(ch, row_idx);

@@ -4,7 +4,7 @@ pub mod playback;
 pub mod scale;
 
 use crate::app::keybindings::KeyBindings;
-use crate::project::Instrument;
+use crate::project::{Cell, Effect, Instrument};
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicUsize};
@@ -168,6 +168,20 @@ pub enum SubColumn {
     Effect,
 }
 
+#[derive(Clone)]
+pub enum ClipboardData {
+    Notes(Vec<Vec<Cell>>),
+    Instruments(Vec<Vec<Option<u8>>>),
+    Volumes(Vec<Vec<Option<u8>>>),
+    Effects(Vec<Vec<Option<Effect>>>),
+    Full {
+        notes: Option<Vec<Vec<Cell>>>,
+        instruments: Option<Vec<Vec<Option<u8>>>>,
+        volumes: Option<Vec<Vec<Option<u8>>>>,
+        effects: Option<Vec<Vec<Option<Effect>>>>,
+    },
+}
+
 pub struct Cursor {
     pub channel: usize,
     pub row: usize,
@@ -175,7 +189,7 @@ pub struct Cursor {
     pub effect_edit_pos: usize,
     pub volume_edit_pos: usize,
     pub instrument_edit_pos: usize,
-    pub selection_anchor: Option<(usize, usize)>,
+    pub selection_anchor: Option<(usize, usize, SubColumn)>,
     pub octave: u8,
 }
 
@@ -197,6 +211,7 @@ pub struct App {
     pub keybindings: KeyBindings,
     pub show_controls_modal: bool,
     pub show_about_modal: bool,
+    pub clipboard: Option<ClipboardData>,
 }
 
 impl App {
@@ -231,16 +246,31 @@ impl App {
             keybindings: KeyBindings::defaults(),
             show_controls_modal: false,
             show_about_modal: false,
+            clipboard: None,
         }
     }
 
-    pub fn selection_bounds(&self) -> Option<(usize, usize, usize, usize)> {
-        self.cursor.selection_anchor.map(|(ach, arow)| {
+    pub fn selection_bounds(&self) -> Option<(usize, usize, usize, usize, SubColumn, SubColumn)> {
+        self.cursor.selection_anchor.map(|(ach, arow, asub)| {
             let min_ch = ach.min(self.cursor.channel);
             let max_ch = ach.max(self.cursor.channel);
             let min_row = arow.min(self.cursor.row);
             let max_row = arow.max(self.cursor.row);
-            (min_ch, max_ch, min_row, max_row)
+            let (a_flat, b_flat) = (
+                ach * 4 + asub as usize,
+                self.cursor.channel * 4 + self.cursor.sub_column as usize,
+            );
+            let min_sub = if a_flat <= b_flat {
+                asub
+            } else {
+                self.cursor.sub_column
+            };
+            let max_sub = if a_flat >= b_flat {
+                asub
+            } else {
+                self.cursor.sub_column
+            };
+            (min_ch, max_ch, min_row, max_row, min_sub, max_sub)
         })
     }
 

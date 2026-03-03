@@ -3,9 +3,9 @@ use eframe::egui::{self, Key};
 use crate::app::keybindings::Action;
 use crate::app::scale::{Scale, map_key_index_to_midi};
 use crate::project::Note;
-use crate::project::{Cell, SampleData};
+use crate::project::{Cell, Effect, SampleData};
 
-use super::{App, Mode, SettingsField, SubColumn, SynthSettingsField};
+use super::{App, ClipboardData, Mode, SettingsField, SubColumn, SynthSettingsField};
 
 impl App {
     pub fn handle_input(&mut self, ctx: &egui::Context) -> bool {
@@ -72,6 +72,29 @@ impl App {
         if actions.contains(&Action::Delete) {
             self.handle_delete();
             return false;
+        }
+
+        {
+            let has_copy = input.events.iter().any(|e| matches!(e, egui::Event::Copy));
+            let has_cut = input.events.iter().any(|e| matches!(e, egui::Event::Cut));
+            let has_paste = input
+                .events
+                .iter()
+                .any(|e| matches!(e, egui::Event::Paste(_)));
+
+            if has_cut {
+                self.handle_copy();
+                self.handle_delete();
+                return false;
+            }
+            if has_copy {
+                self.handle_copy();
+                return false;
+            }
+            if has_paste {
+                self.handle_paste();
+                return false;
+            }
         }
 
         if actions.contains(&Action::NoteOff) && self.cursor.sub_column == SubColumn::Note {
@@ -146,7 +169,7 @@ impl App {
 
         let on_note = self.cursor.sub_column;
 
-        if let Some((min_ch, max_ch, min_row, max_row)) = self.selection_bounds() {
+        if let Some((min_ch, max_ch, min_row, max_row, _, _)) = self.selection_bounds() {
             let in_bounds = min_row.checked_add_signed(dr).is_some()
                 && max_row
                     .checked_add_signed(dr)
@@ -203,7 +226,7 @@ impl App {
                 }
                 self.cursor.channel = self.cursor.channel.checked_add_signed(dc).unwrap();
                 self.cursor.row = self.cursor.row.checked_add_signed(dr).unwrap();
-                if let Some((ach, arow)) = self.cursor.selection_anchor.as_mut() {
+                if let Some((ach, arow, _)) = self.cursor.selection_anchor.as_mut() {
                     *ach = ach.checked_add_signed(dc).unwrap();
                     *arow = arow.checked_add_signed(dr).unwrap();
                 }
@@ -278,7 +301,8 @@ impl App {
         .copied();
 
         if select_action.is_some() && self.cursor.selection_anchor.is_none() {
-            self.cursor.selection_anchor = Some((self.cursor.channel, self.cursor.row));
+            self.cursor.selection_anchor =
+                Some((self.cursor.channel, self.cursor.row, self.cursor.sub_column));
         }
 
         let cursor_action = [
@@ -361,17 +385,33 @@ impl App {
                 }
             }
             Action::SelectLeft => {
-                if self.cursor.channel > 0 {
+                if self.cursor.sub_column == SubColumn::Effect {
+                    self.cursor.sub_column = SubColumn::Volume;
+                } else if self.cursor.sub_column == SubColumn::Volume {
+                    self.cursor.sub_column = SubColumn::Instrument;
+                } else if self.cursor.sub_column == SubColumn::Instrument {
+                    self.cursor.sub_column = SubColumn::Note;
+                } else if self.cursor.channel > 0 {
                     self.cursor.channel -= 1;
+                    self.cursor.sub_column = SubColumn::Effect;
                 } else {
                     self.cursor.channel = self.project.current_pattern().channels - 1;
+                    self.cursor.sub_column = SubColumn::Effect;
                 }
             }
             Action::SelectRight => {
-                if self.cursor.channel < self.project.current_pattern().channels - 1 {
+                if self.cursor.sub_column == SubColumn::Note {
+                    self.cursor.sub_column = SubColumn::Instrument;
+                } else if self.cursor.sub_column == SubColumn::Instrument {
+                    self.cursor.sub_column = SubColumn::Volume;
+                } else if self.cursor.sub_column == SubColumn::Volume {
+                    self.cursor.sub_column = SubColumn::Effect;
+                } else if self.cursor.channel < self.project.current_pattern().channels - 1 {
                     self.cursor.channel += 1;
+                    self.cursor.sub_column = SubColumn::Note;
                 } else {
                     self.cursor.channel = 0;
+                    self.cursor.sub_column = SubColumn::Note;
                 }
             }
             _ => {}
@@ -379,20 +419,28 @@ impl App {
     }
 
     fn handle_delete(&mut self) {
-        if let Some((min_ch, max_ch, min_row, max_row)) = self.selection_bounds() {
+        if let Some((min_ch, max_ch, min_row, max_row, min_sub, max_sub)) = self.selection_bounds()
+        {
             for ch in min_ch..=max_ch {
                 for row in min_row..=max_row {
-                    match self.cursor.sub_column {
-                        SubColumn::Note => self.project.current_pattern_mut().clear(ch, row),
-                        SubColumn::Instrument => {
-                            self.project.current_pattern_mut().clear_instrument(ch, row)
-                        }
-                        SubColumn::Volume => {
-                            self.project.current_pattern_mut().clear_volume(ch, row)
-                        }
-                        SubColumn::Effect => {
-                            self.project.current_pattern_mut().clear_effect(ch, row)
-                        }
+                    let flat_note = ch * 4 + SubColumn::Note as usize;
+                    let flat_inst = ch * 4 + SubColumn::Instrument as usize;
+                    let flat_vol = ch * 4 + SubColumn::Volume as usize;
+                    let flat_fx = ch * 4 + SubColumn::Effect as usize;
+                    let sel_start = min_ch * 4 + min_sub as usize;
+                    let sel_end = max_ch * 4 + max_sub as usize;
+
+                    if flat_note >= sel_start && flat_note <= sel_end {
+                        self.project.current_pattern_mut().clear(ch, row);
+                    }
+                    if flat_inst >= sel_start && flat_inst <= sel_end {
+                        self.project.current_pattern_mut().clear_instrument(ch, row);
+                    }
+                    if flat_vol >= sel_start && flat_vol <= sel_end {
+                        self.project.current_pattern_mut().clear_volume(ch, row);
+                    }
+                    if flat_fx >= sel_start && flat_fx <= sel_end {
+                        self.project.current_pattern_mut().clear_effect(ch, row);
                     }
                 }
             }
@@ -424,6 +472,235 @@ impl App {
         }
     }
 
+    fn handle_copy(&mut self) {
+        let (min_ch, max_ch, min_row, max_row, min_sub, max_sub) =
+            self.selection_bounds().unwrap_or((
+                self.cursor.channel,
+                self.cursor.channel,
+                self.cursor.row,
+                self.cursor.row,
+                self.cursor.sub_column,
+                self.cursor.sub_column,
+            ));
+        let pat = self.project.current_pattern();
+
+        if min_sub != max_sub || min_ch != max_ch {
+            let sel_start = min_ch * 4 + min_sub as usize;
+            let sel_end = max_ch * 4 + max_sub as usize;
+
+            let has_sub = |sub: SubColumn| -> bool {
+                (min_ch..=max_ch).any(|ch| {
+                    let flat = ch * 4 + sub as usize;
+                    flat >= sel_start && flat <= sel_end
+                })
+            };
+
+            let notes = if has_sub(SubColumn::Note) {
+                Some(
+                    (min_ch..=max_ch)
+                        .map(|ch| (min_row..=max_row).map(|r| pat.data[ch][r]).collect())
+                        .collect(),
+                )
+            } else {
+                None
+            };
+            let instruments = if has_sub(SubColumn::Instrument) {
+                Some(
+                    (min_ch..=max_ch)
+                        .map(|ch| {
+                            (min_row..=max_row)
+                                .map(|r| pat.instruments[ch][r])
+                                .collect()
+                        })
+                        .collect(),
+                )
+            } else {
+                None
+            };
+            let volumes = if has_sub(SubColumn::Volume) {
+                Some(
+                    (min_ch..=max_ch)
+                        .map(|ch| (min_row..=max_row).map(|r| pat.volumes[ch][r]).collect())
+                        .collect(),
+                )
+            } else {
+                None
+            };
+            let effects = if has_sub(SubColumn::Effect) {
+                Some(
+                    (min_ch..=max_ch)
+                        .map(|ch| (min_row..=max_row).map(|r| pat.effects[ch][r]).collect())
+                        .collect(),
+                )
+            } else {
+                None
+            };
+            self.clipboard = Some(ClipboardData::Full {
+                notes,
+                instruments,
+                volumes,
+                effects,
+            });
+            return;
+        }
+
+        self.clipboard = Some(match min_sub {
+            SubColumn::Note => {
+                let data: Vec<Vec<Cell>> = (min_ch..=max_ch)
+                    .map(|ch| (min_row..=max_row).map(|r| pat.data[ch][r]).collect())
+                    .collect();
+                ClipboardData::Notes(data)
+            }
+            SubColumn::Instrument => {
+                let data: Vec<Vec<Option<u8>>> = (min_ch..=max_ch)
+                    .map(|ch| {
+                        (min_row..=max_row)
+                            .map(|r| pat.instruments[ch][r])
+                            .collect()
+                    })
+                    .collect();
+                ClipboardData::Instruments(data)
+            }
+            SubColumn::Volume => {
+                let data: Vec<Vec<Option<u8>>> = (min_ch..=max_ch)
+                    .map(|ch| (min_row..=max_row).map(|r| pat.volumes[ch][r]).collect())
+                    .collect();
+                ClipboardData::Volumes(data)
+            }
+            SubColumn::Effect => {
+                let data: Vec<Vec<Option<Effect>>> = (min_ch..=max_ch)
+                    .map(|ch| (min_row..=max_row).map(|r| pat.effects[ch][r]).collect())
+                    .collect();
+                ClipboardData::Effects(data)
+            }
+        });
+    }
+
+    fn handle_paste(&mut self) {
+        let Some(clip) = self.clipboard.clone() else {
+            return;
+        };
+        self.clear_selection();
+
+        let pat = self.project.current_pattern_mut();
+        let ch_start = self.cursor.channel;
+        let row_start = self.cursor.row;
+
+        match clip {
+            ClipboardData::Notes(data) => {
+                for (ci, col) in data.iter().enumerate() {
+                    let ch = ch_start + ci;
+                    if ch >= pat.channels {
+                        break;
+                    }
+                    for (ri, &cell) in col.iter().enumerate() {
+                        let row = row_start + ri;
+                        if row >= pat.rows {
+                            break;
+                        }
+                        pat.data[ch][row] = cell;
+                    }
+                }
+            }
+            ClipboardData::Instruments(data) => {
+                for (ci, col) in data.iter().enumerate() {
+                    let ch = ch_start + ci;
+                    if ch >= pat.channels {
+                        break;
+                    }
+                    for (ri, &val) in col.iter().enumerate() {
+                        let row = row_start + ri;
+                        if row >= pat.rows {
+                            break;
+                        }
+                        pat.instruments[ch][row] = val;
+                    }
+                }
+            }
+            ClipboardData::Volumes(data) => {
+                for (ci, col) in data.iter().enumerate() {
+                    let ch = ch_start + ci;
+                    if ch >= pat.channels {
+                        break;
+                    }
+                    for (ri, &val) in col.iter().enumerate() {
+                        let row = row_start + ri;
+                        if row >= pat.rows {
+                            break;
+                        }
+                        pat.volumes[ch][row] = val;
+                    }
+                }
+            }
+            ClipboardData::Effects(data) => {
+                for (ci, col) in data.iter().enumerate() {
+                    let ch = ch_start + ci;
+                    if ch >= pat.channels {
+                        break;
+                    }
+                    for (ri, &val) in col.iter().enumerate() {
+                        let row = row_start + ri;
+                        if row >= pat.rows {
+                            break;
+                        }
+                        pat.effects[ch][row] = val;
+                    }
+                }
+            }
+            ClipboardData::Full {
+                notes,
+                instruments,
+                volumes,
+                effects,
+            } => {
+                let num_ch = notes
+                    .as_ref()
+                    .map(|v| v.len())
+                    .or_else(|| instruments.as_ref().map(|v| v.len()))
+                    .or_else(|| volumes.as_ref().map(|v| v.len()))
+                    .or_else(|| effects.as_ref().map(|v| v.len()))
+                    .unwrap_or(0);
+                let num_rows = notes
+                    .as_ref()
+                    .and_then(|v| v.first())
+                    .map(|c| c.len())
+                    .or_else(|| {
+                        instruments
+                            .as_ref()
+                            .and_then(|v| v.first())
+                            .map(|c| c.len())
+                    })
+                    .or_else(|| volumes.as_ref().and_then(|v| v.first()).map(|c| c.len()))
+                    .or_else(|| effects.as_ref().and_then(|v| v.first()).map(|c| c.len()))
+                    .unwrap_or(0);
+                for ci in 0..num_ch {
+                    let ch = ch_start + ci;
+                    if ch >= pat.channels {
+                        break;
+                    }
+                    for ri in 0..num_rows {
+                        let row = row_start + ri;
+                        if row >= pat.rows {
+                            break;
+                        }
+                        if let Some(ref n) = notes {
+                            pat.data[ch][row] = n[ci][ri];
+                        }
+                        if let Some(ref inst) = instruments {
+                            pat.instruments[ch][row] = inst[ci][ri];
+                        }
+                        if let Some(ref vol) = volumes {
+                            pat.volumes[ch][row] = vol[ci][ri];
+                        }
+                        if let Some(ref fx) = effects {
+                            pat.effects[ch][row] = fx[ci][ri];
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fn handle_note_off(&mut self) {
         self.clear_selection();
         self.project
@@ -445,11 +722,13 @@ impl App {
             return false;
         };
 
-        let (min_ch, max_ch, min_row, max_row) = self.selection_bounds().unwrap_or((
+        let (min_ch, max_ch, min_row, max_row, _, _) = self.selection_bounds().unwrap_or((
             self.cursor.channel,
             self.cursor.channel,
             self.cursor.row,
             self.cursor.row,
+            self.cursor.sub_column,
+            self.cursor.sub_column,
         ));
 
         let mut min_pitch: Option<u8> = None;
