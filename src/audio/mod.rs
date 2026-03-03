@@ -163,10 +163,9 @@ impl AudioEngine {
         let cs = &instruments[instrument_idx % instruments.len()];
         let _ = self.sender.send(Command::PreviewNote {
             frequency: freq,
-            waveform: cs.waveform,
             volume: 1.0,
             envelope: cs.envelope,
-            sample_data: cs.sample_data.clone(),
+            sample_data: Arc::clone(&cs.sample_data),
             master_volume,
         });
     }

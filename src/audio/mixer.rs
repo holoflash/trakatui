@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use rodio::Source;
 
-use crate::project::{Cell, Effect, Envelope, Instrument, SampleData, Waveform};
+use crate::project::{Cell, Effect, Envelope, Instrument, SampleData};
 
 pub const SAMPLE_RATE: u32 = 44100;
 const SAMPLE_RATE_F: f32 = SAMPLE_RATE as f32;
@@ -31,10 +31,9 @@ pub enum Command {
     },
     PreviewNote {
         frequency: f32,
-        waveform: Waveform,
         volume: f32,
         envelope: Envelope,
-        sample_data: Option<Arc<SampleData>>,
+        sample_data: Arc<SampleData>,
         master_volume: f32,
     },
 }
@@ -80,11 +79,7 @@ impl PatternSnapshot {
 
 struct Channel {
     active: bool,
-    waveform: Waveform,
-    frequency: f32,
-    phase: f32,
-    noise_held: f32,
-    sample_data: Option<Arc<SampleData>>,
+    sample_data: Arc<SampleData>,
     sample_position: f64,
     sample_step: f64,
     envelope: Envelope,
@@ -92,7 +87,6 @@ struct Channel {
     elapsed_samples: u32,
     total_samples: u32,
     note_duration: f32,
-    base_frequency: f32,
     period: f32,
     porta_speed: i16,
     current_instrument: usize,
@@ -102,11 +96,7 @@ impl Channel {
     fn new() -> Self {
         Self {
             active: false,
-            waveform: Waveform::Sine,
-            frequency: 0.0,
-            phase: 0.0,
-            noise_held: 0.0,
-            sample_data: None,
+            sample_data: SampleData::silent(),
             sample_position: 0.0,
             sample_step: 0.0,
             envelope: Envelope {
@@ -119,7 +109,6 @@ impl Channel {
             elapsed_samples: 0,
             total_samples: 0,
             note_duration: 0.0,
-            base_frequency: 0.0,
             period: 0.0,
             porta_speed: 0,
             current_instrument: 0,
@@ -138,42 +127,31 @@ impl Channel {
         8.1758 * 2.0_f32.powf((7680.0 - period) / 768.0)
     }
 
+    fn compute_sample_step(frequency: f32, data: &SampleData) -> f64 {
+        let base_freq = 440.0 * ((f32::from(data.base_note) - 69.0) / 12.0).exp2();
+        let rate = f64::from(frequency) / f64::from(base_freq);
+        (f64::from(data.sample_rate) / f64::from(SAMPLE_RATE)) * rate
+    }
+
     fn trigger(
         &mut self,
         frequency: f32,
-        waveform: Waveform,
         volume: f32,
         envelope: Envelope,
-        sample_data: &Option<Arc<SampleData>>,
+        sample_data: &Arc<SampleData>,
         total_samples: u32,
     ) {
         self.active = true;
-        self.waveform = waveform;
-        self.frequency = frequency;
-        self.base_frequency = frequency;
         self.period = Self::freq_to_period(frequency);
         self.volume = volume;
         self.envelope = envelope;
-        self.phase = 0.0;
         self.elapsed_samples = 0;
         self.total_samples = total_samples;
         self.note_duration = total_samples as f32 / SAMPLE_RATE_F;
-        self.noise_held = fastrand::f32().mul_add(2.0, -1.0);
         self.porta_speed = 0;
-
-        if waveform == Waveform::Sampler {
-            if let Some(data) = sample_data {
-                let base_freq = 440.0 * ((f32::from(data.base_note) - 69.0) / 12.0).exp2();
-                let rate = f64::from(frequency) / f64::from(base_freq);
-                self.sample_step = (f64::from(data.sample_rate) / f64::from(SAMPLE_RATE)) * rate;
-                self.sample_position = 0.0;
-                self.sample_data = Some(Arc::clone(data));
-            } else {
-                self.active = false;
-            }
-        } else {
-            self.sample_data = None;
-        }
+        self.sample_data = Arc::clone(sample_data);
+        self.sample_step = Self::compute_sample_step(frequency, sample_data);
+        self.sample_position = 0.0;
     }
 
     fn note_off(&mut self) {
@@ -189,21 +167,32 @@ impl Channel {
         let time = self.elapsed_samples as f32 / SAMPLE_RATE_F;
         let env = self.envelope.amplitude(time, self.note_duration);
 
-        let sample = if self.waveform == Waveform::Sampler {
-            self.sampler_sample()
-        } else if self.waveform == Waveform::Noise {
-            self.noise_held
+        let data = &self.sample_data;
+        let samples = &data.samples_f32;
+        let len = samples.len();
+
+        if len == 0 {
+            self.elapsed_samples += 1;
+            return 0.0;
+        }
+
+        let idx = self.sample_position as usize;
+        let frac = (self.sample_position - idx as f64) as f32;
+
+        let sample = if idx >= len {
+            0.0
+        } else if idx + 1 < len {
+            samples[idx] + (samples[idx + 1] - samples[idx]) * frac
         } else {
-            self.waveform.sample(self.phase)
+            samples[idx]
         };
 
-        if self.waveform != Waveform::Sampler {
-            self.phase += self.frequency / SAMPLE_RATE_F;
-            if self.phase >= 1.0 {
-                self.phase -= 1.0;
-                if self.waveform == Waveform::Noise {
-                    self.noise_held = fastrand::f32().mul_add(2.0, -1.0);
-                }
+        self.sample_position += self.sample_step;
+
+        if data.loop_length > 0 {
+            let loop_end = data.loop_start + data.loop_length;
+            if self.sample_position >= loop_end as f64 {
+                self.sample_position -= data.loop_length as f64;
             }
         }
 
@@ -211,39 +200,13 @@ impl Channel {
         sample * env * self.volume
     }
 
-    fn sampler_sample(&mut self) -> f32 {
-        let Some(data) = self.sample_data.as_ref() else {
-            return 0.0;
-        };
-        let idx = self.sample_position as usize;
-        let frac = (self.sample_position - idx as f64) as f32;
-        let samples = &data.samples_f32;
-
-        let sample = if idx >= samples.len() {
-            0.0
-        } else if idx + 1 < samples.len() {
-            samples[idx] + (samples[idx + 1] - samples[idx]) * frac
-        } else {
-            samples[idx]
-        };
-
-        self.sample_position += self.sample_step;
-        sample
-    }
-
     fn tick_update(&mut self) {
         if !self.active || self.porta_speed == 0 {
             return;
         }
         self.period = (self.period + self.porta_speed as f32).clamp(50.0, 7680.0);
-        self.frequency = Self::period_to_freq(self.period);
-        if self.waveform == Waveform::Sampler
-            && let Some(data) = self.sample_data.as_ref()
-        {
-            let base_freq = 440.0 * ((f32::from(data.base_note) - 69.0) / 12.0).exp2();
-            let rate = f64::from(self.frequency) / f64::from(base_freq);
-            self.sample_step = (f64::from(data.sample_rate) / f64::from(SAMPLE_RATE)) * rate;
-        }
+        let freq = Self::period_to_freq(self.period);
+        self.sample_step = Self::compute_sample_step(freq, &self.sample_data);
     }
 }
 
@@ -332,7 +295,6 @@ impl TrackerSource {
                 }
                 Command::PreviewNote {
                     frequency,
-                    waveform,
                     volume,
                     envelope,
                     sample_data,
@@ -341,7 +303,6 @@ impl TrackerSource {
                     let total = (PREVIEW_DURATION_SECS * SAMPLE_RATE_F).round() as u32;
                     self.preview_channel.trigger(
                         frequency,
-                        waveform,
                         volume * 0.8,
                         envelope,
                         &sample_data,
@@ -421,7 +382,6 @@ impl TrackerSource {
 
                     channel.trigger(
                         note.frequency(),
-                        inst.waveform,
                         vol,
                         inst.envelope,
                         &inst.sample_data,
@@ -576,7 +536,7 @@ mod tests {
         let settings = Arc::new(PlaybackSettings {
             bpm: 125,
             master_volume: 1.0,
-            instruments: vec![Instrument::default_for(Waveform::Sine)],
+            instruments: Instrument::defaults(),
         });
         Command::Play {
             start_row: 0,

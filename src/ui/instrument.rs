@@ -1,7 +1,7 @@
 use eframe::egui::{self, FontId, Pos2, RichText, Stroke, Vec2};
 
 use crate::app::{App, Mode, SynthSettingsField};
-use crate::project::{SampleData, Waveform};
+use crate::project::SampleData;
 
 use super::widgets::settings_row;
 use super::{COLOR_LAYOUT_BG_PANEL, COLOR_MODE_SETTINGS, COLOR_TEXT_DIM};
@@ -41,37 +41,20 @@ pub fn draw_instrument(ui: &mut egui::Ui, app: &mut App) {
                 synth_active && app.synth_field == SynthSettingsField::Instrument,
             );
             ui.add_space(6.0);
-            settings_row(
-                ui,
-                "Waveform",
-                cs.waveform.name(),
-                synth_active && app.synth_field == SynthSettingsField::Waveform,
-            );
+
+            settings_row(ui, "Name", &cs.name, false);
             ui.add_space(6.0);
 
-            let sample_display = if cs.waveform == Waveform::Sampler {
-                if let Some(ref sd) = cs.sample_data {
-                    truncate_name(&sd.name, 18).to_string()
-                } else {
-                    "No sample".to_string()
-                }
-            } else {
-                "─".to_string()
-            };
             settings_row(
                 ui,
                 "Sample",
-                &sample_display,
+                truncate_name(&cs.sample_data.name, 18),
                 synth_active && app.synth_field == SynthSettingsField::Sample,
             );
             ui.add_space(6.0);
 
-            if cs.waveform == Waveform::Sampler
-                && let Some(ref sd) = cs.sample_data
-            {
-                draw_waveform_preview(ui, &sd.samples_i16);
-                ui.add_space(6.0);
-            }
+            draw_waveform_preview(ui, &cs.sample_data.samples_i16);
+            ui.add_space(6.0);
 
             settings_row(
                 ui,
@@ -195,12 +178,8 @@ fn handle_sample_drop(ui: &mut egui::Ui, app: &mut App) {
 
         let idx = app.current_instrument;
 
-        if app.project.instruments[idx].waveform != Waveform::Sampler {
-            app.project.instruments[idx].waveform = Waveform::Sampler;
-        }
-
         if let Ok(data) = SampleData::load_from_path(&path) {
-            app.project.instruments[idx].sample_data = Some(data);
+            app.project.instruments[idx].sample_data = data;
         }
     }
 }

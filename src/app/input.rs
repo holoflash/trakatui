@@ -3,7 +3,7 @@ use eframe::egui::{self, Key};
 use crate::app::keybindings::Action;
 use crate::app::scale::{Scale, map_key_index_to_midi};
 use crate::project::Note;
-use crate::project::{Cell, SampleData, Waveform};
+use crate::project::{Cell, SampleData};
 
 use super::{App, Mode, SettingsField, SubColumn, SynthSettingsField};
 
@@ -784,9 +784,7 @@ impl App {
                 self.synth_field
                     .adjust(&mut self.project.instruments[idx], -1);
             }
-        } else if self.project.instruments[self.current_instrument].waveform == Waveform::Sampler
-            && actions.contains(&Action::LoadSample)
-        {
+        } else if actions.contains(&Action::LoadSample) {
             self.load_sample_for_instrument(self.current_instrument);
         }
     }
@@ -803,7 +801,7 @@ impl App {
         if let Some(path) = dialog.pick_file()
             && let Ok(data) = SampleData::load_from_path(&path)
         {
-            self.project.instruments[inst_idx].sample_data = Some(data);
+            self.project.instruments[inst_idx].sample_data = data;
         }
     }
 }

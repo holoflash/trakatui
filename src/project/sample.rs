@@ -7,6 +7,8 @@ use rodio::Source;
 
 const MAX_SAMPLE_LEN: usize = 131_072;
 const INV_I16_MAX: f32 = 1.0 / i16::MAX as f32;
+const WAVE_LEN: usize = 256;
+const WAVE_RATE: u32 = 44100;
 
 #[derive(Debug, Clone)]
 pub struct SampleData {
@@ -15,6 +17,8 @@ pub struct SampleData {
     pub samples_f32: Vec<f32>,
     pub sample_rate: u32,
     pub base_note: u8,
+    pub loop_start: usize,
+    pub loop_length: usize,
 }
 
 impl SampleData {
@@ -67,7 +71,77 @@ impl SampleData {
             samples_f32,
             sample_rate,
             base_note: 60,
+            loop_start: 0,
+            loop_length: 0,
         }))
+    }
+
+    fn generate(name: &str, samples_f32: Vec<f32>, looped: bool) -> Arc<Self> {
+        let samples_i16: Vec<i16> = samples_f32
+            .iter()
+            .map(|&s| (s * f32::from(i16::MAX)) as i16)
+            .collect();
+        let len = samples_f32.len();
+        Arc::new(Self {
+            name: name.to_string(),
+            samples_i16,
+            samples_f32,
+            sample_rate: WAVE_RATE,
+            base_note: 60,
+            loop_start: 0,
+            loop_length: if looped { len } else { 0 },
+        })
+    }
+
+    pub fn sine() -> Arc<Self> {
+        let data: Vec<f32> = (0..WAVE_LEN)
+            .map(|i| {
+                let phase = i as f32 / WAVE_LEN as f32;
+                (std::f32::consts::TAU * phase).sin()
+            })
+            .collect();
+        Self::generate("Sine", data, true)
+    }
+
+    pub fn triangle() -> Arc<Self> {
+        let data: Vec<f32> = (0..WAVE_LEN)
+            .map(|i| {
+                let phase = i as f32 / WAVE_LEN as f32;
+                4.0f32.mul_add((phase - (phase + 0.5).floor()).abs(), -1.0)
+            })
+            .collect();
+        Self::generate("Triangle", data, true)
+    }
+
+    pub fn square() -> Arc<Self> {
+        let data: Vec<f32> = (0..WAVE_LEN)
+            .map(|i| {
+                let phase = i as f32 / WAVE_LEN as f32;
+                if phase < 0.5 { 1.0 } else { -1.0 }
+            })
+            .collect();
+        Self::generate("Square", data, true)
+    }
+
+    pub fn saw() -> Arc<Self> {
+        let data: Vec<f32> = (0..WAVE_LEN)
+            .map(|i| {
+                let phase = i as f32 / WAVE_LEN as f32;
+                2.0f32.mul_add(phase, -1.0)
+            })
+            .collect();
+        Self::generate("Saw", data, true)
+    }
+
+    pub fn noise() -> Arc<Self> {
+        let data: Vec<f32> = (0..4096)
+            .map(|_| fastrand::f32().mul_add(2.0, -1.0))
+            .collect();
+        Self::generate("Noise", data, true)
+    }
+
+    pub fn silent() -> Arc<Self> {
+        Self::generate("Empty", vec![0.0; WAVE_LEN], false)
     }
 }
 
@@ -95,6 +169,8 @@ mod tests {
             samples_f32: vec![0.0f32; 44100],
             sample_rate: 44100,
             base_note: 60,
+            loop_start: 0,
+            loop_length: 0,
         };
         assert_eq!(data.samples_i16.len(), 44100);
         assert_eq!(data.samples_f32.len(), 44100);
@@ -104,5 +180,24 @@ mod tests {
     fn load_nonexistent_file() {
         let result = SampleData::load_from_path(Path::new("/nonexistent/file.wav"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn generated_waveforms() {
+        let sine = SampleData::sine();
+        assert_eq!(sine.samples_f32.len(), WAVE_LEN);
+        assert_eq!(sine.loop_length, WAVE_LEN);
+        assert!((sine.samples_f32[0]).abs() < 0.01);
+
+        let square = SampleData::square();
+        assert!((square.samples_f32[0] - 1.0).abs() < 0.01);
+        assert!((square.samples_f32[WAVE_LEN / 2] + 1.0).abs() < 0.01);
+
+        let noise = SampleData::noise();
+        assert_eq!(noise.samples_f32.len(), 4096);
+        assert_eq!(noise.loop_length, 4096);
+
+        let silent = SampleData::silent();
+        assert_eq!(silent.loop_length, 0);
     }
 }

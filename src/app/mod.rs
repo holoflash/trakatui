@@ -22,7 +22,6 @@ pub enum Mode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SynthSettingsField {
     Instrument,
-    Waveform,
     Sample,
     Attack,
     Decay,
@@ -33,8 +32,7 @@ pub enum SynthSettingsField {
 impl SynthSettingsField {
     pub const fn next(self) -> Self {
         match self {
-            Self::Instrument => Self::Waveform,
-            Self::Waveform => Self::Sample,
+            Self::Instrument => Self::Sample,
             Self::Sample => Self::Attack,
             Self::Attack => Self::Decay,
             Self::Decay => Self::Sustain,
@@ -46,8 +44,7 @@ impl SynthSettingsField {
     pub const fn prev(self) -> Self {
         match self {
             Self::Instrument => Self::Release,
-            Self::Waveform => Self::Instrument,
-            Self::Sample => Self::Waveform,
+            Self::Sample => Self::Instrument,
             Self::Attack => Self::Sample,
             Self::Decay => Self::Attack,
             Self::Sustain => Self::Decay,
@@ -57,16 +54,7 @@ impl SynthSettingsField {
 
     pub fn adjust(self, inst: &mut Instrument, delta: i16) {
         match self {
-            Self::Instrument => {}
-            Self::Waveform => {
-                inst.waveform = if delta > 0 {
-                    inst.waveform.next()
-                } else {
-                    inst.waveform.prev()
-                };
-                inst.envelope = inst.waveform.default_envelope();
-            }
-            Self::Sample => {}
+            Self::Instrument | Self::Sample => {}
             Self::Attack => {
                 inst.envelope.attack =
                     (inst.envelope.attack + 0.005 * f32::from(delta)).clamp(0.0, 2.0);
@@ -237,7 +225,7 @@ impl App {
             playback_row,
             display_peak: 0.0,
             settings_field: SettingsField::Scale,
-            synth_field: SynthSettingsField::Waveform,
+            synth_field: SynthSettingsField::Sample,
             current_instrument: 0,
             status_message: None,
             keybindings: KeyBindings::defaults(),
