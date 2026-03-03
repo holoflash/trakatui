@@ -10,13 +10,48 @@ const INV_I16_MAX: f32 = 1.0 / i16::MAX as f32;
 const WAVE_LEN: usize = 256;
 const WAVE_RATE: u32 = 44100;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoopType {
+    None,
+    Forward,
+    PingPong,
+}
+
+impl LoopType {
+    pub const fn next(self) -> Self {
+        match self {
+            Self::None => Self::Forward,
+            Self::Forward => Self::PingPong,
+            Self::PingPong => Self::None,
+        }
+    }
+
+    pub const fn prev(self) -> Self {
+        match self {
+            Self::None => Self::PingPong,
+            Self::Forward => Self::None,
+            Self::PingPong => Self::Forward,
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::None => "Off",
+            Self::Forward => "Forward",
+            Self::PingPong => "Ping-Pong",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SampleData {
+    #[allow(dead_code)]
     pub name: String,
     pub samples_i16: Vec<i16>,
     pub samples_f32: Vec<f32>,
     pub sample_rate: u32,
     pub base_note: u8,
+    pub loop_type: LoopType,
     pub loop_start: usize,
     pub loop_length: usize,
 }
@@ -71,6 +106,7 @@ impl SampleData {
             samples_f32,
             sample_rate,
             base_note: 60,
+            loop_type: LoopType::None,
             loop_start: 0,
             loop_length: 0,
         }))
@@ -88,6 +124,11 @@ impl SampleData {
             samples_f32,
             sample_rate: WAVE_RATE,
             base_note: 60,
+            loop_type: if looped {
+                LoopType::Forward
+            } else {
+                LoopType::None
+            },
             loop_start: 0,
             loop_length: if looped { len } else { 0 },
         })
@@ -169,6 +210,7 @@ mod tests {
             samples_f32: vec![0.0f32; 44100],
             sample_rate: 44100,
             base_note: 60,
+            loop_type: LoopType::None,
             loop_start: 0,
             loop_length: 0,
         };

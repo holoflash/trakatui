@@ -6,7 +6,9 @@ use std::time::Duration;
 
 use rodio::Source;
 
-use crate::project::{Cell, Effect, Envelope, Instrument, SampleData};
+use crate::project::channel::{Envelope, Instrument};
+use crate::project::sample::LoopType;
+use crate::project::{Cell, Effect, SampleData};
 
 pub const SAMPLE_RATE: u32 = 44100;
 const SAMPLE_RATE_F: f32 = SAMPLE_RATE as f32;
@@ -82,6 +84,7 @@ struct Channel {
     sample_data: Arc<SampleData>,
     sample_position: f64,
     sample_step: f64,
+    sample_direction: f64,
     envelope: Envelope,
     volume: f32,
     elapsed_samples: u32,
@@ -99,6 +102,7 @@ impl Channel {
             sample_data: SampleData::silent(),
             sample_position: 0.0,
             sample_step: 0.0,
+            sample_direction: 1.0,
             envelope: Envelope {
                 attack: 0.0,
                 decay: 0.0,
@@ -152,6 +156,7 @@ impl Channel {
         self.sample_data = Arc::clone(sample_data);
         self.sample_step = Self::compute_sample_step(frequency, sample_data);
         self.sample_position = 0.0;
+        self.sample_direction = 1.0;
     }
 
     fn note_off(&mut self) {
@@ -187,12 +192,32 @@ impl Channel {
             samples[idx]
         };
 
-        self.sample_position += self.sample_step;
+        self.sample_position += self.sample_step * self.sample_direction;
 
         if data.loop_length > 0 {
-            let loop_end = data.loop_start + data.loop_length;
-            if self.sample_position >= loop_end as f64 {
-                self.sample_position -= data.loop_length as f64;
+            let loop_end = (data.loop_start + data.loop_length) as f64;
+            let loop_start = data.loop_start as f64;
+            match data.loop_type {
+                LoopType::Forward => {
+                    if self.sample_position >= loop_end {
+                        self.sample_position -= data.loop_length as f64;
+                    }
+                }
+                LoopType::PingPong => {
+                    if self.sample_direction > 0.0 && self.sample_position >= loop_end {
+                        self.sample_position = loop_end - (self.sample_position - loop_end);
+                        self.sample_direction = -1.0;
+                    } else if self.sample_direction < 0.0 && self.sample_position < loop_start {
+                        self.sample_position = loop_start + (loop_start - self.sample_position);
+                        self.sample_direction = 1.0;
+                    }
+                }
+                LoopType::None => {
+                    if self.sample_position >= len as f64 {
+                        self.active = false;
+                        return 0.0;
+                    }
+                }
             }
         }
 

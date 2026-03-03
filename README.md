@@ -14,17 +14,12 @@ If you're looking for a great modern alternative, check out [**Furnace**](https:
 
 ### TODO
 
-- [ ] Multi-pattern support with order table
-- [ ] Standard effects system (portamento, vibrato, arpeggio, volume slide, etc.)
-- [ ] Instrument model (multi-sample, volume/panning envelopes)
+- [ ] All XM effects
 - [ ] Sample loops (forward, ping-pong)
 - [ ] XM import
 - [ ] MOD import
-- [ ] Native project format save/load
 - [ ] XM export
-- [ ] Synth filter
-- [ ] Synth LFO
-- [ ] IT import
+- [x] Multi-pattern support with order table
 - [x] Sampler channel
 - [x] Pitch bend effect
 - [x] Effects column

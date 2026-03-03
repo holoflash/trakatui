@@ -3,10 +3,11 @@ pub mod keybindings;
 pub mod playback;
 pub mod scale;
 
+use std::sync::Arc;
+
 use crate::app::keybindings::KeyBindings;
 use crate::project::{Cell, Effect, Instrument};
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicUsize};
 
 use crate::audio::AudioEngine;
@@ -22,7 +23,9 @@ pub enum Mode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SynthSettingsField {
     Instrument,
-    Sample,
+    LoopType,
+    LoopStart,
+    LoopLength,
     Attack,
     Decay,
     Sustain,
@@ -32,8 +35,10 @@ pub enum SynthSettingsField {
 impl SynthSettingsField {
     pub const fn next(self) -> Self {
         match self {
-            Self::Instrument => Self::Sample,
-            Self::Sample => Self::Attack,
+            Self::Instrument => Self::LoopType,
+            Self::LoopType => Self::LoopStart,
+            Self::LoopStart => Self::LoopLength,
+            Self::LoopLength => Self::Attack,
             Self::Attack => Self::Decay,
             Self::Decay => Self::Sustain,
             Self::Sustain => Self::Release,
@@ -44,8 +49,10 @@ impl SynthSettingsField {
     pub const fn prev(self) -> Self {
         match self {
             Self::Instrument => Self::Release,
-            Self::Sample => Self::Instrument,
-            Self::Attack => Self::Sample,
+            Self::LoopType => Self::Instrument,
+            Self::LoopStart => Self::LoopType,
+            Self::LoopLength => Self::LoopStart,
+            Self::Attack => Self::LoopLength,
             Self::Decay => Self::Attack,
             Self::Sustain => Self::Decay,
             Self::Release => Self::Sustain,
@@ -54,7 +61,35 @@ impl SynthSettingsField {
 
     pub fn adjust(self, inst: &mut Instrument, delta: i16) {
         match self {
-            Self::Instrument | Self::Sample => {}
+            Self::Instrument => {}
+            Self::LoopType => {
+                let sd = Arc::make_mut(&mut inst.sample_data);
+                sd.loop_type = if delta > 0 {
+                    sd.loop_type.next()
+                } else {
+                    sd.loop_type.prev()
+                };
+            }
+            Self::LoopStart => {
+                let sd = Arc::make_mut(&mut inst.sample_data);
+                let max = sd.samples_f32.len().saturating_sub(sd.loop_length);
+                let step = (sd.samples_f32.len() / 100).max(1);
+                sd.loop_start = if delta > 0 {
+                    (sd.loop_start + step).min(max)
+                } else {
+                    sd.loop_start.saturating_sub(step)
+                };
+            }
+            Self::LoopLength => {
+                let sd = Arc::make_mut(&mut inst.sample_data);
+                let max = sd.samples_f32.len().saturating_sub(sd.loop_start);
+                let step = (sd.samples_f32.len() / 100).max(1);
+                sd.loop_length = if delta > 0 {
+                    (sd.loop_length + step).min(max)
+                } else {
+                    sd.loop_length.saturating_sub(step)
+                };
+            }
             Self::Attack => {
                 inst.envelope.attack =
                     (inst.envelope.attack + 0.005 * f32::from(delta)).clamp(0.0, 2.0);
@@ -240,7 +275,7 @@ impl App {
             playback_row,
             display_peak: 0.0,
             settings_field: SettingsField::Scale,
-            synth_field: SynthSettingsField::Sample,
+            synth_field: SynthSettingsField::Instrument,
             current_instrument: 0,
             status_message: None,
             keybindings: KeyBindings::defaults(),

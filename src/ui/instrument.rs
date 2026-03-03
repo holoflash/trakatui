@@ -47,9 +47,25 @@ pub fn draw_instrument(ui: &mut egui::Ui, app: &mut App) {
 
             settings_row(
                 ui,
-                "Sample",
-                truncate_name(&cs.sample_data.name, 18),
-                synth_active && app.synth_field == SynthSettingsField::Sample,
+                "Loop",
+                cs.sample_data.loop_type.label(),
+                synth_active && app.synth_field == SynthSettingsField::LoopType,
+            );
+            ui.add_space(6.0);
+
+            settings_row(
+                ui,
+                "Loop Start",
+                &format!("{}", cs.sample_data.loop_start),
+                synth_active && app.synth_field == SynthSettingsField::LoopStart,
+            );
+            ui.add_space(6.0);
+
+            settings_row(
+                ui,
+                "Loop Len",
+                &format!("{}", cs.sample_data.loop_length),
+                synth_active && app.synth_field == SynthSettingsField::LoopLength,
             );
             ui.add_space(6.0);
 
@@ -84,14 +100,6 @@ pub fn draw_instrument(ui: &mut egui::Ui, app: &mut App) {
                 synth_active && app.synth_field == SynthSettingsField::Release,
             );
         });
-}
-
-fn truncate_name(name: &str, max_len: usize) -> &str {
-    if name.len() <= max_len {
-        name
-    } else {
-        &name[..max_len]
-    }
 }
 
 fn draw_waveform_preview(ui: &mut egui::Ui, samples: &[i16]) {

@@ -3,7 +3,7 @@ pub mod channel;
 pub mod pattern;
 pub mod sample;
 
-pub use channel::{Envelope, Instrument};
+pub use channel::Instrument;
 pub use pattern::{
     Cell, Effect, Note, Pattern, effect_display, instrument_display, volume_display,
 };
