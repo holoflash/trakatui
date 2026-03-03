@@ -15,10 +15,10 @@ If you're looking for a great modern alternative, check out [**Furnace**](https:
 ### TODO
 
 - [ ] All XM effects
-- [ ] Sample loops (forward, ping-pong)
-- [ ] XM import
 - [ ] MOD import
 - [ ] XM export
+- [x] XM import
+- [x] Sample loops (forward, ping-pong)
 - [x] Multi-pattern support with order table
 - [x] Sampler channel
 - [x] Pitch bend effect
