@@ -91,8 +91,24 @@ struct Channel {
     total_samples: u32,
     note_duration: f32,
     period: f32,
-    porta_speed: i16,
+    base_period: f32,
     current_instrument: usize,
+    current_effect: Option<Effect>,
+
+    porta_target: f32,
+    tone_porta_speed: u8,
+
+    vibrato_speed: u8,
+    vibrato_depth: u8,
+    vibrato_pos: u8,
+
+    arpeggio_x: u8,
+    arpeggio_y: u8,
+
+    last_porta_up: u8,
+    last_porta_down: u8,
+    last_vol_slide: u8,
+    last_sample_offset: u8,
 }
 
 impl Channel {
@@ -114,8 +130,20 @@ impl Channel {
             total_samples: 0,
             note_duration: 0.0,
             period: 0.0,
-            porta_speed: 0,
+            base_period: 0.0,
             current_instrument: 0,
+            current_effect: None,
+            porta_target: 0.0,
+            tone_porta_speed: 0,
+            vibrato_speed: 0,
+            vibrato_depth: 0,
+            vibrato_pos: 0,
+            arpeggio_x: 0,
+            arpeggio_y: 0,
+            last_porta_up: 0,
+            last_porta_down: 0,
+            last_vol_slide: 0,
+            last_sample_offset: 0,
         }
     }
 
@@ -147,16 +175,17 @@ impl Channel {
     ) {
         self.active = true;
         self.period = Self::freq_to_period(frequency);
+        self.base_period = self.period;
         self.volume = volume;
         self.envelope = envelope;
         self.elapsed_samples = 0;
         self.total_samples = total_samples;
         self.note_duration = total_samples as f32 / SAMPLE_RATE_F;
-        self.porta_speed = 0;
         self.sample_data = Arc::clone(sample_data);
         self.sample_step = Self::compute_sample_step(frequency, sample_data);
         self.sample_position = 0.0;
         self.sample_direction = 1.0;
+        self.vibrato_pos = 0;
     }
 
     fn note_off(&mut self) {
@@ -225,13 +254,98 @@ impl Channel {
         sample * env * self.volume
     }
 
-    fn tick_update(&mut self) {
-        if !self.active || self.porta_speed == 0 {
+    fn tick_update(&mut self, tick: u16) {
+        if !self.active {
             return;
         }
-        self.period = (self.period + self.porta_speed as f32).clamp(50.0, 7680.0);
+
+        let effect = match self.current_effect {
+            Some(e) => e,
+            None => return,
+        };
+
+        match effect.kind {
+            // 0xy — Arpeggio
+            0 if effect.param != 0 => {
+                let semitone_offset = match tick % 3 {
+                    0 => 0,
+                    1 => self.arpeggio_x,
+                    _ => self.arpeggio_y,
+                };
+                let period = self.base_period - f32::from(semitone_offset) * 64.0;
+                let freq = Self::period_to_freq(period.max(50.0));
+                self.sample_step = Self::compute_sample_step(freq, &self.sample_data);
+            }
+            // 1xx — Porta up
+            1 => {
+                self.period = (self.period - f32::from(self.last_porta_up) * 4.0).max(50.0);
+                self.update_freq_from_period();
+            }
+            // 2xx — Porta down
+            2 => {
+                self.period = (self.period + f32::from(self.last_porta_down) * 4.0).min(7680.0);
+                self.update_freq_from_period();
+            }
+            // 3xx — Tone portamento
+            3 => self.do_tone_porta(),
+            // 4xy — Vibrato
+            4 => self.do_vibrato(),
+            // 5xy — Tone porta + volume slide
+            5 => {
+                self.do_tone_porta();
+                self.do_vol_slide(self.last_vol_slide);
+            }
+            // 6xy — Vibrato + volume slide
+            6 => {
+                self.do_vibrato();
+                self.do_vol_slide(self.last_vol_slide);
+            }
+            // Axy — Volume slide
+            0xA => {
+                self.do_vol_slide(self.last_vol_slide);
+            }
+            _ => {}
+        }
+    }
+
+    fn update_freq_from_period(&mut self) {
         let freq = Self::period_to_freq(self.period);
         self.sample_step = Self::compute_sample_step(freq, &self.sample_data);
+    }
+
+    fn do_tone_porta(&mut self) {
+        if self.porta_target == 0.0 || self.tone_porta_speed == 0 {
+            return;
+        }
+        let speed = f32::from(self.tone_porta_speed) * 4.0;
+        if self.period > self.porta_target {
+            self.period = (self.period - speed).max(self.porta_target);
+        } else if self.period < self.porta_target {
+            self.period = (self.period + speed).min(self.porta_target);
+        }
+        self.base_period = self.period;
+        self.update_freq_from_period();
+    }
+
+    fn do_vibrato(&mut self) {
+        // Sine-based vibrato
+        let pos = self.vibrato_pos & 63;
+        let sine = (f32::from(pos) * std::f32::consts::TAU / 64.0).sin();
+        let delta = sine * f32::from(self.vibrato_depth) * 4.0;
+        let period = (self.base_period + delta).clamp(50.0, 7680.0);
+        let freq = Self::period_to_freq(period);
+        self.sample_step = Self::compute_sample_step(freq, &self.sample_data);
+        self.vibrato_pos = self.vibrato_pos.wrapping_add(self.vibrato_speed);
+    }
+
+    fn do_vol_slide(&mut self, param: u8) {
+        let hi = param >> 4;
+        let lo = param & 0x0F;
+        if hi > 0 {
+            self.volume = (self.volume + f32::from(hi) / 64.0).min(1.0);
+        } else {
+            self.volume = (self.volume - f32::from(lo) / 64.0).max(0.0);
+        }
     }
 }
 
@@ -248,10 +362,13 @@ pub struct TrackerSource {
     tick_sample_counter: f64,
     tick_in_row: u16,
     speed: u16,
+    bpm: u16,
     receiver: mpsc::Receiver<Command>,
     playback_row: Arc<AtomicUsize>,
     playback_order: Arc<AtomicUsize>,
     master_volume: f32,
+    jump_to_order: Option<usize>,
+    break_to_row: Option<usize>,
 }
 
 impl TrackerSource {
@@ -273,10 +390,13 @@ impl TrackerSource {
             tick_sample_counter: 0.0,
             tick_in_row: 0,
             speed: DEFAULT_SPEED,
+            bpm: 125,
             receiver,
             playback_row,
             playback_order,
             master_volume: 1.0,
+            jump_to_order: None,
+            break_to_row: None,
         }
     }
 
@@ -398,20 +518,68 @@ impl TrackerSource {
             let cell = pattern.data[ch_idx][self.current_row];
             let channel = &mut self.channels[ch_idx];
 
+            let effect = effect.map(|e| {
+                let mut e = e;
+                match e.kind {
+                    1 => {
+                        if e.param != 0 {
+                            channel.last_porta_up = e.param;
+                        } else {
+                            e.param = channel.last_porta_up;
+                        }
+                    }
+                    2 => {
+                        if e.param != 0 {
+                            channel.last_porta_down = e.param;
+                        } else {
+                            e.param = channel.last_porta_down;
+                        }
+                    }
+                    3 => {
+                        if e.param != 0 {
+                            channel.tone_porta_speed = e.param;
+                        }
+                    }
+                    5 | 6 | 0xA => {
+                        if e.param != 0 {
+                            channel.last_vol_slide = e.param;
+                        } else {
+                            e.param = channel.last_vol_slide;
+                        }
+                    }
+                    9 => {
+                        if e.param != 0 {
+                            channel.last_sample_offset = e.param;
+                        } else {
+                            e.param = channel.last_sample_offset;
+                        }
+                    }
+                    _ => {}
+                }
+                e
+            });
+
+            let is_tone_porta = matches!(effect, Some(Effect { kind: 3 | 5, .. }));
+
             match cell {
                 Cell::NoteOn(note) => {
-                    let gate_rows = pattern.gate_rows(ch_idx, self.current_row);
-                    let gate_samples = samples_per_row * gate_rows as u32;
-                    let release_samples = (inst.envelope.release * SAMPLE_RATE_F).round() as u32;
-                    let vol = volume.map_or(1.0, |v| v.min(64) as f32 / 64.0);
+                    if is_tone_porta {
+                        channel.porta_target = Channel::freq_to_period(note.frequency());
+                    } else {
+                        let gate_rows = pattern.gate_rows(ch_idx, self.current_row);
+                        let gate_samples = samples_per_row * gate_rows as u32;
+                        let release_samples =
+                            (inst.envelope.release * SAMPLE_RATE_F).round() as u32;
+                        let vol = volume.map_or(1.0, |v| v.min(64) as f32 / 64.0);
 
-                    channel.trigger(
-                        note.frequency(),
-                        vol,
-                        inst.envelope,
-                        &inst.sample_data,
-                        gate_samples + release_samples,
-                    );
+                        channel.trigger(
+                            note.frequency(),
+                            vol,
+                            inst.envelope,
+                            &inst.sample_data,
+                            gate_samples + release_samples,
+                        );
+                    }
                 }
                 Cell::NoteOff => channel.note_off(),
                 Cell::Empty => {}
@@ -421,15 +589,59 @@ impl TrackerSource {
                 channel.volume = v.min(64) as f32 / 64.0;
             }
 
-            match effect {
-                Some(Effect { kind: 1, param }) => {
-                    channel.porta_speed = -(param as i16);
-                }
-                Some(Effect { kind: 2, param }) => {
-                    channel.porta_speed = param as i16;
-                }
-                _ => {
-                    channel.porta_speed = 0;
+            channel.current_effect = effect;
+
+            if let Some(e) = effect {
+                match e.kind {
+                    // 0xy — Arpeggio (store nibbles)
+                    0 if e.param != 0 => {
+                        channel.arpeggio_x = e.param >> 4;
+                        channel.arpeggio_y = e.param & 0x0F;
+                    }
+                    // 4xy — Vibrato
+                    4 => {
+                        let x = e.param >> 4;
+                        let y = e.param & 0x0F;
+                        if x != 0 {
+                            channel.vibrato_speed = x;
+                        }
+                        if y != 0 {
+                            channel.vibrato_depth = y;
+                        }
+                    }
+                    // 9xx — Sample offset
+                    9 => {
+                        if inst_num.is_some() {
+                            channel.sample_position = f64::from(e.param) * 256.0;
+                        }
+                    }
+                    // Bxx — Position jump
+                    0xB => {
+                        self.jump_to_order = Some(e.param as usize);
+                    }
+                    // Cxx — Set volume
+                    0xC => {
+                        channel.volume = (e.param.min(64) as f32) / 64.0;
+                    }
+                    // Dxx — Pattern break (BCD)
+                    0xD => {
+                        let hi = e.param >> 4;
+                        let lo = e.param & 0x0F;
+                        self.break_to_row = Some((hi * 10 + lo) as usize);
+                    }
+                    // Fxx — Set speed/tempo
+                    0xF => {
+                        if e.param > 0 {
+                            if e.param <= 0x1F {
+                                self.speed = u16::from(e.param);
+                            } else {
+                                self.bpm = u16::from(e.param);
+                                self.samples_per_tick =
+                                    f64::from(SAMPLE_RATE) * 60.0 / f64::from(self.bpm) / 24.0;
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -440,21 +652,35 @@ impl TrackerSource {
         if self.tick_in_row >= self.speed {
             self.tick_in_row = 0;
             if !self.patterns.is_empty() {
-                let pat_idx = self.order[self.current_order_idx];
-                let rows = self.patterns[pat_idx].rows;
-                self.current_row += 1;
-                if self.current_row >= rows {
-                    self.current_row = 0;
-                    self.current_order_idx = (self.current_order_idx + 1) % self.order.len();
+                if let Some(order) = self.jump_to_order.take() {
+                    let row = self.break_to_row.take().unwrap_or(0);
+                    self.current_order_idx = order.min(self.order.len() - 1);
+                    self.current_row = row;
                     self.playback_order
                         .store(self.current_order_idx, Ordering::Relaxed);
+                } else if let Some(row) = self.break_to_row.take() {
+                    self.current_order_idx = (self.current_order_idx + 1) % self.order.len();
+                    self.current_row = row;
+                    self.playback_order
+                        .store(self.current_order_idx, Ordering::Relaxed);
+                } else {
+                    let pat_idx = self.order[self.current_order_idx];
+                    let rows = self.patterns[pat_idx].rows;
+                    self.current_row += 1;
+                    if self.current_row >= rows {
+                        self.current_row = 0;
+                        self.current_order_idx = (self.current_order_idx + 1) % self.order.len();
+                        self.playback_order
+                            .store(self.current_order_idx, Ordering::Relaxed);
+                    }
                 }
                 self.playback_row.store(self.current_row, Ordering::Relaxed);
             }
             self.process_row();
         } else {
+            let tick = self.tick_in_row;
             for ch in &mut self.channels {
-                ch.tick_update();
+                ch.tick_update(tick);
             }
         }
     }

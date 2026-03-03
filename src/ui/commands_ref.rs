@@ -9,12 +9,56 @@ struct CmdEntry {
 
 const COMMANDS: &[CmdEntry] = &[
     CmdEntry {
+        code: "0xy",
+        description: "Arpeggio (x,y semitones)",
+    },
+    CmdEntry {
         code: "1xx",
-        description: "Portamento up (speed xx per tick)",
+        description: "Portamento up",
     },
     CmdEntry {
         code: "2xx",
-        description: "Portamento down (speed xx per tick)",
+        description: "Portamento down",
+    },
+    CmdEntry {
+        code: "3xx",
+        description: "Tone portamento",
+    },
+    CmdEntry {
+        code: "4xy",
+        description: "Vibrato (x=speed y=depth)",
+    },
+    CmdEntry {
+        code: "5xy",
+        description: "Tone porta + vol slide",
+    },
+    CmdEntry {
+        code: "6xy",
+        description: "Vibrato + vol slide",
+    },
+    CmdEntry {
+        code: "9xx",
+        description: "Sample offset (xx*256)",
+    },
+    CmdEntry {
+        code: "Axy",
+        description: "Volume slide (x=up y=down)",
+    },
+    CmdEntry {
+        code: "Bxx",
+        description: "Position jump",
+    },
+    CmdEntry {
+        code: "Cxx",
+        description: "Set volume (00-40)",
+    },
+    CmdEntry {
+        code: "Dxx",
+        description: "Pattern break (BCD row)",
+    },
+    CmdEntry {
+        code: "Fxx",
+        description: "Set speed/tempo",
     },
 ];
 
