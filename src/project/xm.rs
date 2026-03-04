@@ -196,6 +196,7 @@ pub fn load_xm(path: &Path) -> Result<Project, String> {
                 samples: Vec::new(),
                 note_to_sample: Vec::new(),
                 vol_fadeout: 0,
+                default_panning: 0.5,
                 vibrato_type: 0,
                 vibrato_sweep: 0,
                 vibrato_depth: 0,
@@ -277,7 +278,7 @@ pub fn load_xm(path: &Path) -> Result<Project, String> {
             let volume = read_u8(cur, &format!("{ctx} vol"))?;
             let finetune = read_i8(cur, &format!("{ctx} finetune"))?;
             let sample_type = read_u8(cur, &format!("{ctx} type"))?;
-            let _panning = read_u8(cur, &format!("{ctx} pan"))?;
+            let panning = read_u8(cur, &format!("{ctx} pan"))?;
             let relative_note = read_i8(cur, &format!("{ctx} relnote"))?;
             let _reserved = read_u8(cur, &format!("{ctx} reserved"))?;
             let _name = read_string(cur, 22, &format!("{ctx} name"))?;
@@ -289,6 +290,7 @@ pub fn load_xm(path: &Path) -> Result<Project, String> {
                 volume,
                 finetune,
                 sample_type,
+                panning,
                 relative_note,
             });
         }
@@ -353,6 +355,10 @@ pub fn load_xm(path: &Path) -> Result<Project, String> {
             .first()
             .cloned()
             .unwrap_or_else(|| (SampleData::silent(), 1.0));
+        let first_panning = sample_headers
+            .first()
+            .map(|sh| f32::from(sh.panning) / 255.0)
+            .unwrap_or(0.5);
 
         instruments.push(Instrument {
             name: if inst_name.is_empty() {
@@ -366,6 +372,7 @@ pub fn load_xm(path: &Path) -> Result<Project, String> {
             samples: all_samples,
             note_to_sample,
             vol_fadeout,
+            default_panning: first_panning,
             vibrato_type,
             vibrato_sweep,
             vibrato_depth,
@@ -382,6 +389,7 @@ pub fn load_xm(path: &Path) -> Result<Project, String> {
             samples: Vec::new(),
             note_to_sample: Vec::new(),
             vol_fadeout: 0,
+            default_panning: 0.5,
             vibrato_type: 0,
             vibrato_sweep: 0,
             vibrato_depth: 0,
@@ -450,5 +458,6 @@ struct XmSampleHeader {
     volume: u8,
     finetune: i8,
     sample_type: u8,
+    panning: u8,
     relative_note: i8,
 }

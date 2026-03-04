@@ -758,6 +758,7 @@ impl TrackerSource {
                         channel.auto_vib_sweep = inst.vibrato_sweep;
                         channel.auto_vib_depth = inst.vibrato_depth;
                         channel.auto_vib_rate = inst.vibrato_rate;
+                        channel.panning = inst.default_panning;
                     } else {
                         let vol = vol_from_col.unwrap_or(sample_vol);
 
@@ -772,6 +773,7 @@ impl TrackerSource {
                         channel.auto_vib_sweep = inst.vibrato_sweep;
                         channel.auto_vib_depth = inst.vibrato_depth;
                         channel.auto_vib_rate = inst.vibrato_rate;
+                        channel.panning = inst.default_panning;
                     }
                 }
                 Cell::NoteOff => channel.note_off(),
