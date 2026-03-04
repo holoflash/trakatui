@@ -18,7 +18,6 @@ pub fn draw_instrument(ui: &mut egui::Ui, app: &mut App) {
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
             let inst_idx = app.current_instrument;
-            let cs = &app.project.instruments[inst_idx];
             let synth_active = app.mode == Mode::SynthEdit;
 
             ui.label(
@@ -48,13 +47,37 @@ pub fn draw_instrument(ui: &mut egui::Ui, app: &mut App) {
             settings_row(
                 ui,
                 "Envelope",
-                if cs.vol_envelope.enabled { "On" } else { "Off" },
+                if app.project.instruments[inst_idx].vol_envelope.enabled {
+                    "On"
+                } else {
+                    "Off"
+                },
                 synth_active && app.synth_field == SynthSettingsField::Envelope,
             );
             ui.add_space(6.0);
 
-            settings_row(ui, "Name", &cs.name, false);
+            let mut inst_name = app.project.instruments[inst_idx].name.clone();
+            let te_has_focus = ui
+                .horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!("{:<10}", "Name"))
+                            .font(FontId::monospace(13.0))
+                            .color(COLOR_TEXT),
+                    );
+                    ui.add_space(8.0);
+                    let te = egui::TextEdit::singleline(&mut inst_name)
+                        .font(FontId::monospace(12.0))
+                        .text_color(COLOR_TEXT)
+                        .desired_width(ui.available_width())
+                        .frame(false);
+                    ui.add(te).has_focus()
+                })
+                .inner;
+            app.text_editing = te_has_focus;
+            app.project.instruments[inst_idx].name = inst_name;
             ui.add_space(6.0);
+
+            let cs = &app.project.instruments[inst_idx];
 
             settings_row(
                 ui,
@@ -285,6 +308,9 @@ fn handle_sample_drop(ui: &mut egui::Ui, app: &mut App) {
 
         if let Ok(data) = SampleData::load_from_path(&path) {
             app.project.instruments[idx].sample_data = data;
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                app.project.instruments[idx].name = stem.to_string();
+            }
         }
     }
 }

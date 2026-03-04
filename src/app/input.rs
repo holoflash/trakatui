@@ -9,6 +9,9 @@ use super::{App, ClipboardData, Mode, SettingsField, SubColumn, SynthSettingsFie
 
 impl App {
     pub fn handle_input(&mut self, ctx: &egui::Context) -> bool {
+        if self.text_editing {
+            return false;
+        }
         ctx.input(|input| {
             let actions = self.keybindings.active_actions(input);
 

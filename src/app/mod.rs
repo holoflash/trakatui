@@ -391,6 +391,7 @@ pub struct App {
     pub follow_playback: bool,
     pub follow_scroll_offset: f32,
     pub show_sidebar: bool,
+    pub text_editing: bool,
 }
 
 impl App {
@@ -431,6 +432,7 @@ impl App {
             follow_playback: true,
             follow_scroll_offset: 0.0,
             show_sidebar: true,
+            text_editing: false,
         }
     }
 
