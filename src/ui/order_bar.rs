@@ -149,6 +149,9 @@ pub fn draw_order_bar(ctx: &egui::Context, app: &mut App) {
             OrderAction::Select(i) => {
                 app.project.current_order_idx = i;
                 app.cursor.row = 0;
+                if app.playback.playing {
+                    app.start_playback(false);
+                }
             }
             OrderAction::SetPattern(i, p) => {
                 app.project.order[i] = p;
