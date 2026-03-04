@@ -9,8 +9,7 @@ use super::{
     COLOR_LAYOUT_BG_DARK, COLOR_PATTERN_CURSOR_BG, COLOR_PATTERN_CURSOR_TEXT, COLOR_PATTERN_EFFECT,
     COLOR_PATTERN_INSTRUMENT, COLOR_PATTERN_NOTE, COLOR_PATTERN_NOTE_OFF,
     COLOR_PATTERN_PLAYBACK_HIGHLIGHT, COLOR_PATTERN_PLAYBACK_TEXT, COLOR_PATTERN_SELECTION_BG,
-    COLOR_PATTERN_SELECTION_TEXT, COLOR_PATTERN_SUBDIVISION, COLOR_PATTERN_VOLUME, COLOR_TEXT,
-    COLOR_TEXT_DIM,
+    COLOR_PATTERN_SELECTION_TEXT, COLOR_PATTERN_SUBDIVISION, COLOR_PATTERN_VOLUME, COLOR_TEXT_DIM,
 };
 
 const COLOR_MUTED: egui::Color32 = egui::Color32::from_rgb(180, 80, 70);
@@ -104,50 +103,87 @@ fn draw_header_row(
     });
 
     for ch in 0..channels {
+        let is_muted = muted.get(ch).copied().unwrap_or(false);
+        let label = format!("{}", ch + 1);
+
+        let cell_bg = if is_muted {
+            COLOR_MUTED
+        } else {
+            egui::Color32::TRANSPARENT
+        };
+        let text_color = if is_muted {
+            COLOR_PATTERN_CURSOR_TEXT
+        } else {
+            COLOR_TEXT_DIM
+        };
+
         header.col(|ui| {
+            fill_cell(ui, cell_bg);
             draw_left_border(ui);
 
-            let is_muted = muted.get(ch).copied().unwrap_or(false);
+            let rect = ui.max_rect();
+            let response = ui.interact(rect, ui.id().with(("ch_hdr", ch)), Sense::click());
 
-            let label = if is_muted {
-                format!("M{}", ch + 1)
-            } else {
-                format!("{}", ch + 1)
-            };
-
-            let color = if is_muted {
-                COLOR_MUTED
-            } else {
-                COLOR_TEXT_DIM
-            };
-
-            ui.add_space(CELL_PAD);
-            let response = ui.add(
-                egui::Label::new(RichText::new(&label).font(FONT).color(color))
-                    .sense(Sense::click()),
+            ui.painter().text(
+                rect.left_center() + egui::vec2(CELL_PAD, 0.0),
+                egui::Align2::LEFT_CENTER,
+                &label,
+                FONT,
+                text_color,
             );
 
-            if response.hovered() && !is_muted {
-                ui.painter().text(
-                    response.rect.left_center() + egui::vec2(0.0, 0.0),
-                    egui::Align2::LEFT_CENTER,
-                    &label,
-                    FONT,
-                    COLOR_TEXT,
-                );
+            if response.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
-
-            if response.clicked() {
+            if response.secondary_clicked() {
+                toggle_solo(muted, ch, channels);
+            } else if response.clicked() {
                 if ch >= muted.len() {
                     muted.resize(ch + 1, false);
                 }
                 muted[ch] = !muted[ch];
             }
         });
-        for _ in 0..3 {
+
+        for sub in 0..3 {
             header.col(|ui| {
-                ui.add_space(CELL_PAD);
+                fill_cell(ui, cell_bg);
+
+                let rect = ui.max_rect();
+                let response =
+                    ui.interact(rect, ui.id().with(("ch_hdr_sub", ch, sub)), Sense::click());
+
+                if response.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                if response.secondary_clicked() {
+                    toggle_solo(muted, ch, channels);
+                } else if response.clicked() {
+                    if ch >= muted.len() {
+                        muted.resize(ch + 1, false);
+                    }
+                    muted[ch] = !muted[ch];
+                }
             });
+        }
+    }
+}
+
+fn toggle_solo(muted: &mut Vec<bool>, ch: usize, channels: usize) {
+    if muted.len() < channels {
+        muted.resize(channels, false);
+    }
+
+    let is_soloed =
+        !muted[ch] && (0..channels).all(|c| c == ch || muted.get(c).copied().unwrap_or(false));
+
+    if is_soloed {
+        for m in muted.iter_mut() {
+            *m = false;
+        }
+    } else {
+        for (c, m) in muted.iter_mut().enumerate() {
+            *m = c != ch;
         }
     }
 }
