@@ -63,7 +63,7 @@ pub fn draw_order_bar(ctx: &egui::Context, app: &mut App) {
                     ui.painter().text(
                         btn_rect.center(),
                         egui::Align2::CENTER_CENTER,
-                        "ADD",
+                        "+",
                         BTN_FONT,
                         COLOR_TEXT,
                     );

@@ -59,6 +59,7 @@ pub fn draw_pattern(ctx: &egui::Context, app: &mut App) {
                     let visible_height = ui.available_height();
                     let mut table = TableBuilder::new(ui)
                         .striped(false)
+                        .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
                         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
                         .column(col);
 

@@ -96,10 +96,10 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                 let follow_label = if app.follow_playback {
                     " ▶ Follow "
                 } else {
-                    "   Follow "
+                    " - Follow "
                 };
                 let follow_color = if app.follow_playback {
-                    COLOR_MODE_PLAYING
+                    COLOR_PATTERN_CURSOR_TEXT
                 } else {
                     COLOR_TEXT_DIM
                 };
@@ -110,13 +110,17 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                                 .font(FontId::monospace(12.0))
                                 .color(follow_color),
                         )
-                        .fill(COLOR_LAYOUT_BORDER)
+                        .fill(if app.follow_playback {
+                            COLOR_LAYOUT_BORDER
+                        } else {
+                            COLOR_LAYOUT_BG_PANEL
+                        })
                         .stroke(Stroke::new(
                             1.0,
                             if app.follow_playback {
-                                COLOR_MODE_PLAYING
+                                COLOR_PATTERN_CURSOR_TEXT
                             } else {
-                                COLOR_LAYOUT_BORDER_ACTIVE
+                                COLOR_TEXT_DIM
                             },
                         )),
                     )
@@ -134,10 +138,25 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                             egui::Button::new(
                                 RichText::new(sidebar_icon)
                                     .font(FontId::monospace(12.0))
-                                    .color(COLOR_PATTERN_CURSOR_TEXT),
+                                    .color(if app.show_sidebar {
+                                        COLOR_PATTERN_CURSOR_TEXT
+                                    } else {
+                                        COLOR_TEXT_DIM
+                                    }),
                             )
-                            .fill(COLOR_LAYOUT_BORDER)
-                            .stroke(Stroke::new(1.0, COLOR_LAYOUT_BORDER_ACTIVE)),
+                            .fill(if app.show_sidebar {
+                                COLOR_LAYOUT_BORDER
+                            } else {
+                                COLOR_LAYOUT_BG_PANEL
+                            })
+                            .stroke(Stroke::new(
+                                1.0,
+                                if app.show_sidebar {
+                                    COLOR_PATTERN_CURSOR_TEXT
+                                } else {
+                                    COLOR_TEXT_DIM
+                                },
+                            )),
                         )
                         .on_hover_cursor(egui::CursorIcon::PointingHand);
 
