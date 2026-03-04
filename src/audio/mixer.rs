@@ -521,6 +521,7 @@ pub struct TrackerSource {
     preview_tick_counter: f64,
     preview_tick: u16,
     muted_channels: Vec<bool>,
+    stop_at_end: bool,
 }
 
 impl TrackerSource {
@@ -555,6 +556,7 @@ impl TrackerSource {
             preview_tick_counter: 0.0,
             preview_tick: 0,
             muted_channels: vec![false; 32],
+            stop_at_end: false,
         }
     }
 
@@ -947,7 +949,12 @@ impl TrackerSource {
                     self.playback_order
                         .store(self.current_order_idx, Ordering::Relaxed);
                 } else if let Some(row) = self.break_to_row.take() {
-                    self.current_order_idx = (self.current_order_idx + 1) % self.order.len();
+                    let next_order = self.current_order_idx + 1;
+                    if next_order >= self.order.len() && self.stop_at_end {
+                        self.playing = false;
+                        return;
+                    }
+                    self.current_order_idx = next_order % self.order.len();
                     self.current_row = row;
                     self.playback_order
                         .store(self.current_order_idx, Ordering::Relaxed);
@@ -957,7 +964,12 @@ impl TrackerSource {
                     self.current_row += 1;
                     if self.current_row >= rows {
                         self.current_row = 0;
-                        self.current_order_idx = (self.current_order_idx + 1) % self.order.len();
+                        let next_order = self.current_order_idx + 1;
+                        if next_order >= self.order.len() && self.stop_at_end {
+                            self.playing = false;
+                            return;
+                        }
+                        self.current_order_idx = next_order % self.order.len();
                         self.playback_order
                             .store(self.current_order_idx, Ordering::Relaxed);
                     }
@@ -988,6 +1000,10 @@ impl Iterator for TrackerSource {
         }
 
         self.process_commands();
+
+        if self.stop_at_end && !self.playing {
+            return None;
+        }
 
         let mut mix_l = 0.0_f32;
         let mut mix_r = 0.0_f32;
@@ -1057,7 +1073,7 @@ pub fn export_source(
     bpm: u16,
     instruments: &[Instrument],
     master_volume: f32,
-) -> (TrackerSource, usize) {
+) -> TrackerSource {
     let (sender, receiver) = mpsc::channel();
     let playback_row = Arc::new(AtomicUsize::new(0));
     let playback_order = Arc::new(AtomicUsize::new(0));
@@ -1073,13 +1089,6 @@ pub fn export_source(
         muted_channels: Vec::new(),
     });
 
-    let samples_per_tick = f64::from(SAMPLE_RATE) * 5.0 / (f64::from(bpm) * 2.0);
-    let samples_per_row = (samples_per_tick * f64::from(DEFAULT_SPEED)).round() as usize;
-    let total_samples: usize = order
-        .iter()
-        .map(|&idx| samples_per_row * patterns[idx].rows)
-        .sum();
-
     let _ = sender.send(Command::Play {
         start_row: 0,
         start_order: 0,
@@ -1089,8 +1098,9 @@ pub fn export_source(
     });
     drop(sender);
 
-    let source = TrackerSource::new(receiver, playback_row, playback_order);
-    (source, total_samples)
+    let mut source = TrackerSource::new(receiver, playback_row, playback_order);
+    source.stop_at_end = true;
+    source
 }
 
 #[cfg(test)]
