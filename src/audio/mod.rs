@@ -110,6 +110,7 @@ impl AudioEngine {
         instruments: &[Instrument],
         bpm: u16,
         master_volume: f32,
+        muted_channels: &[bool],
     ) {
         let snapshots: Vec<Arc<PatternSnapshot>> = patterns
             .iter()
@@ -119,6 +120,7 @@ impl AudioEngine {
             bpm,
             master_volume,
             instruments: instruments.to_vec(),
+            muted_channels: muted_channels.to_vec(),
         });
         let _ = self.sender.send(Command::Play {
             start_row: row,
@@ -133,11 +135,18 @@ impl AudioEngine {
         let _ = self.sender.send(Command::Stop);
     }
 
-    pub fn update_settings(&self, instruments: &[Instrument], bpm: u16, master_volume: f32) {
+    pub fn update_settings(
+        &self,
+        instruments: &[Instrument],
+        bpm: u16,
+        master_volume: f32,
+        muted_channels: &[bool],
+    ) {
         let settings = Arc::new(PlaybackSettings {
             bpm,
             master_volume,
             instruments: instruments.to_vec(),
+            muted_channels: muted_channels.to_vec(),
         });
         let _ = self.sender.send(Command::UpdateSettings { settings });
     }
@@ -164,7 +173,7 @@ impl AudioEngine {
         let _ = self.sender.send(Command::PreviewNote {
             frequency: freq,
             volume: 1.0,
-            envelope: cs.envelope,
+            vol_envelope: cs.vol_envelope.clone(),
             sample_data: Arc::clone(&cs.sample_data),
             master_volume,
         });

@@ -25,6 +25,7 @@ impl App {
             &self.project.instruments,
             self.project.bpm,
             self.project.master_volume_linear(),
+            &self.muted_channels,
         );
     }
 
@@ -46,6 +47,7 @@ impl App {
             &self.project.instruments,
             self.project.bpm,
             self.project.master_volume_linear(),
+            &self.muted_channels,
         );
         self.audio
             .update_patterns(&self.project.patterns, &self.project.order);

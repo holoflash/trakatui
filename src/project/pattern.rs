@@ -29,13 +29,14 @@ pub fn instrument_display(inst: Option<u8>) -> String {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Note {
+    /// XM note value: 1–96, where 1 = C-0, 96 = B-7.
     pub pitch: u8,
 }
 
 impl Note {
     pub fn new(pitch: u8) -> Self {
         Self {
-            pitch: pitch.min(127),
+            pitch: pitch.clamp(1, 96),
         }
     }
 
@@ -43,13 +44,14 @@ impl Note {
         let names = [
             "C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-",
         ];
-        let octave = (self.pitch / 12).saturating_sub(1);
-        let note_idx = (self.pitch % 12) as usize;
+        let octave = (self.pitch - 1) / 12;
+        let note_idx = ((self.pitch - 1) % 12) as usize;
         format!("{}{}", names[note_idx], octave)
     }
 
     pub fn frequency(self) -> f32 {
-        440.0 * ((f32::from(self.pitch) - 69.0) / 12.0).exp2()
+        // XM note 1 = C-0, note 58 = A-4 (440Hz)
+        440.0 * ((f32::from(self.pitch) - 58.0) / 12.0).exp2()
     }
 }
 
@@ -166,15 +168,17 @@ mod tests {
 
     #[test]
     fn note_names() {
-        assert_eq!(Note::new(60).name(), "C-4");
-        assert_eq!(Note::new(61).name(), "C#4");
-        assert_eq!(Note::new(69).name(), "A-4");
-        assert_eq!(Note::new(72).name(), "C-5");
+        // XM note 49 = C-4, 50 = C#4, 58 = A-4, 61 = C-5
+        assert_eq!(Note::new(49).name(), "C-4");
+        assert_eq!(Note::new(50).name(), "C#4");
+        assert_eq!(Note::new(58).name(), "A-4");
+        assert_eq!(Note::new(61).name(), "C-5");
     }
 
     #[test]
     fn note_frequency() {
-        let a4 = Note::new(69);
+        // XM note 58 = A-4 = 440Hz
+        let a4 = Note::new(58);
         assert!((a4.frequency() - 440.0).abs() < 0.01);
     }
 
@@ -182,8 +186,8 @@ mod tests {
     fn pattern_basics() {
         let mut pat = Pattern::new(4, 16);
         assert_eq!(pat.get(0, 0), Cell::Empty);
-        pat.set(0, 0, Cell::NoteOn(Note::new(60)));
-        assert_eq!(pat.get(0, 0), Cell::NoteOn(Note::new(60)));
+        pat.set(0, 0, Cell::NoteOn(Note::new(49)));
+        assert_eq!(pat.get(0, 0), Cell::NoteOn(Note::new(49)));
         pat.set(0, 1, Cell::NoteOff);
         assert_eq!(pat.get(0, 1), Cell::NoteOff);
         pat.clear(0, 0);

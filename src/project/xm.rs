@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::app::scale::ScaleIndex;
 use crate::project::Project;
-use crate::project::channel::{Envelope, Instrument, XmVolEnvelope};
+use crate::project::channel::{Instrument, VolEnvelope};
 use crate::project::pattern::{Cell, Effect, Note, Pattern};
 use crate::project::sample::{LoopType, SampleData};
 
@@ -143,7 +143,7 @@ pub fn load_xm(path: &Path) -> Result<Project, String> {
                     }
 
                     pattern.data[ch][row] = match note {
-                        1..=96 => Cell::NoteOn(Note { pitch: note + 11 }),
+                        1..=96 => Cell::NoteOn(Note { pitch: note }),
                         97 => Cell::NoteOff,
                         _ => Cell::Empty,
                     };
@@ -190,17 +190,16 @@ pub fn load_xm(path: &Path) -> Result<Project, String> {
                 } else {
                     inst_name
                 },
-                envelope: Envelope {
-                    attack: 0.01,
-                    decay: 0.0,
-                    sustain: 1.0,
-                    release: 0.3,
-                },
+                vol_envelope: VolEnvelope::disabled(),
                 sample_data: SampleData::silent(),
                 default_volume: 1.0,
                 samples: Vec::new(),
                 note_to_sample: Vec::new(),
-                xm_vol_envelope: None,
+                vol_fadeout: 0,
+                vibrato_type: 0,
+                vibrato_sweep: 0,
+                vibrato_depth: 0,
+                vibrato_rate: 0,
             });
             continue;
         }
@@ -220,18 +219,18 @@ pub fn load_xm(path: &Path) -> Result<Project, String> {
         let _pan_loop_end = read_u8(cur, "pan loop end")?;
         let vol_type = read_u8(cur, "vol type")?;
         let _pan_type = read_u8(cur, "pan type")?;
-        let _vibrato_type = read_u8(cur, "vib type")?;
-        let _vibrato_sweep = read_u8(cur, "vib sweep")?;
-        let _vibrato_depth = read_u8(cur, "vib depth")?;
-        let _vibrato_rate = read_u8(cur, "vib rate")?;
-        let _vol_fadeout = read_u16(cur, "vol fadeout")?;
+        let vibrato_type = read_u8(cur, "vib type")?;
+        let vibrato_sweep = read_u8(cur, "vib sweep")?;
+        let vibrato_depth = read_u8(cur, "vib depth")?;
+        let vibrato_rate = read_u8(cur, "vib rate")?;
+        let vol_fadeout = read_u16(cur, "vol fadeout")?;
         let _reserved = read_u16(cur, "inst reserved")?;
 
         let vol_env_enabled = vol_type & 1 != 0;
         let vol_env_sustain = vol_type & 2 != 0;
         let vol_env_loop = vol_type & 4 != 0;
 
-        let xm_vol_envelope = if vol_env_enabled && num_vol_points >= 2 {
+        let vol_envelope = if vol_env_enabled && num_vol_points >= 2 {
             let mut points = Vec::with_capacity(num_vol_points as usize);
             for i in 0..num_vol_points.min(12) as usize {
                 let offset = i * 4;
@@ -256,25 +255,14 @@ pub fn load_xm(path: &Path) -> Result<Project, String> {
                 None
             };
 
-            Some(XmVolEnvelope {
+            VolEnvelope {
                 points,
                 sustain_point,
                 loop_range,
                 enabled: true,
-            })
-        } else {
-            None
-        };
-
-        let envelope = if vol_env_enabled && num_vol_points >= 2 {
-            approximate_adsr(&vol_env_raw, num_vol_points)
-        } else {
-            Envelope {
-                attack: 0.005,
-                decay: 0.0,
-                sustain: 1.0,
-                release: 0.3,
             }
+        } else {
+            VolEnvelope::disabled()
         };
 
         cur.seek(SeekFrom::Start(inst_start + u64::from(inst_header_size)))
@@ -375,29 +363,32 @@ pub fn load_xm(path: &Path) -> Result<Project, String> {
             } else {
                 inst_name
             },
-            envelope,
+            vol_envelope,
             sample_data: first_sd,
             default_volume: first_vol,
             samples: all_samples,
             note_to_sample,
-            xm_vol_envelope,
+            vol_fadeout,
+            vibrato_type,
+            vibrato_sweep,
+            vibrato_depth,
+            vibrato_rate,
         });
     }
 
     while instruments.len() < 8 {
         instruments.push(Instrument {
             name: format!("Empty {}", instruments.len() + 1),
-            envelope: Envelope {
-                attack: 0.01,
-                decay: 0.0,
-                sustain: 1.0,
-                release: 0.05,
-            },
+            vol_envelope: VolEnvelope::disabled(),
             sample_data: SampleData::silent(),
             default_volume: 1.0,
             samples: Vec::new(),
             note_to_sample: Vec::new(),
-            xm_vol_envelope: None,
+            vol_fadeout: 0,
+            vibrato_type: 0,
+            vibrato_sweep: 0,
+            vibrato_depth: 0,
+            vibrato_rate: 0,
         });
     }
 
@@ -453,60 +444,6 @@ fn decode_16bit_sample(
     }
 
     Ok((samples_i16, samples_f32))
-}
-
-fn approximate_adsr(env_raw: &[u8], num_points: u8) -> Envelope {
-    let n = num_points.min(12) as usize;
-    let mut points: Vec<(u16, u16)> = Vec::with_capacity(n);
-
-    for i in 0..n {
-        let offset = i * 4;
-        if offset + 3 < env_raw.len() {
-            let frame = u16::from_le_bytes([env_raw[offset], env_raw[offset + 1]]);
-            let value = u16::from_le_bytes([env_raw[offset + 2], env_raw[offset + 3]]);
-            points.push((frame, value));
-        }
-    }
-
-    if points.is_empty() {
-        return Envelope {
-            attack: 0.005,
-            decay: 0.0,
-            sustain: 1.0,
-            release: 0.3,
-        };
-    }
-
-    let peak_idx = points
-        .iter()
-        .enumerate()
-        .max_by_key(|(_, (_, v))| *v)
-        .map(|(i, _)| i)
-        .unwrap_or(0);
-
-    let tick_to_sec = 1.0 / 50.0;
-    let attack = (points[peak_idx].0 as f32 * tick_to_sec).max(0.001);
-
-    let sustain_val = if peak_idx + 1 < points.len() {
-        points.last().map_or(64, |(_, v)| *v)
-    } else {
-        points[peak_idx].1
-    };
-    let sustain = (sustain_val as f32 / 64.0).clamp(0.0, 1.0);
-
-    let decay = if peak_idx + 1 < points.len() {
-        let decay_frame = points[peak_idx + 1].0.saturating_sub(points[peak_idx].0);
-        (decay_frame as f32 * tick_to_sec).max(0.0)
-    } else {
-        0.0
-    };
-
-    Envelope {
-        attack,
-        decay,
-        sustain,
-        release: 0.3,
-    }
 }
 
 struct XmSampleHeader {

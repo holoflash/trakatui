@@ -1,10 +1,13 @@
 use eframe::egui::{self, FontId, Pos2, RichText, Stroke, Vec2};
 
 use crate::app::{App, Mode, SynthSettingsField};
-use crate::project::SampleData;
+use crate::project::{SampleData, VolEnvelope};
 
 use super::widgets::settings_row;
-use super::{COLOR_LAYOUT_BG_PANEL, COLOR_MODE_SETTINGS, COLOR_TEXT_DIM};
+use super::{
+    COLOR_LAYOUT_BG_DARK, COLOR_LAYOUT_BG_PANEL, COLOR_MODE_SETTINGS, COLOR_PATTERN_CURSOR_BG,
+    COLOR_PATTERN_CURSOR_TEXT, COLOR_TEXT, COLOR_TEXT_DIM,
+};
 
 pub fn draw_instrument(ui: &mut egui::Ui, app: &mut App) {
     handle_sample_drop(ui, app);
@@ -72,32 +75,49 @@ pub fn draw_instrument(ui: &mut egui::Ui, app: &mut App) {
             draw_waveform_preview(ui, &cs.sample_data.samples_i16);
             ui.add_space(6.0);
 
+            draw_envelope_preview(ui, &cs.vol_envelope);
+            ui.add_space(6.0);
+
             settings_row(
                 ui,
-                "Attack",
-                &format!("{:.3}", cs.envelope.attack),
-                synth_active && app.synth_field == SynthSettingsField::Attack,
+                "Fadeout",
+                &format!("{}", cs.vol_fadeout),
+                synth_active && app.synth_field == SynthSettingsField::Fadeout,
+            );
+            ui.add_space(6.0);
+            let vib_type_name = match cs.vibrato_type {
+                0 => "Sine",
+                1 => "Square",
+                2 => "RampDn",
+                3 => "RampUp",
+                _ => "?",
+            };
+            settings_row(
+                ui,
+                "Vib Type",
+                vib_type_name,
+                synth_active && app.synth_field == SynthSettingsField::VibratoType,
             );
             ui.add_space(6.0);
             settings_row(
                 ui,
-                "Decay",
-                &format!("{:.3}", cs.envelope.decay),
-                synth_active && app.synth_field == SynthSettingsField::Decay,
+                "Vib Sweep",
+                &format!("{}", cs.vibrato_sweep),
+                synth_active && app.synth_field == SynthSettingsField::VibratoSweep,
             );
             ui.add_space(6.0);
             settings_row(
                 ui,
-                "Sustain",
-                &format!("{:.2}", cs.envelope.sustain),
-                synth_active && app.synth_field == SynthSettingsField::Sustain,
+                "Vib Depth",
+                &format!("{}", cs.vibrato_depth),
+                synth_active && app.synth_field == SynthSettingsField::VibratoDepth,
             );
             ui.add_space(6.0);
             settings_row(
                 ui,
-                "Release",
-                &format!("{:.3}", cs.envelope.release),
-                synth_active && app.synth_field == SynthSettingsField::Release,
+                "Vib Rate",
+                &format!("{}", cs.vibrato_rate),
+                synth_active && app.synth_field == SynthSettingsField::VibratoRate,
             );
         });
 }
@@ -190,4 +210,159 @@ fn handle_sample_drop(ui: &mut egui::Ui, app: &mut App) {
             app.project.instruments[idx].sample_data = data;
         }
     }
+}
+
+fn draw_envelope_preview(ui: &mut egui::Ui, env: &VolEnvelope) {
+    let width = ui.available_width();
+    let height = 60.0;
+
+    let (rect, _response) = ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+
+    painter.rect_filled(rect, 2.0, COLOR_LAYOUT_BG_DARK);
+
+    let grid_color = egui::Color32::from_rgba_premultiplied(80, 70, 90, 40);
+    for frac in [0.25, 0.5, 0.75] {
+        let y = rect.top() + height * (1.0 - frac);
+        painter.line_segment(
+            [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
+            Stroke::new(0.5, grid_color),
+        );
+    }
+
+    if !env.enabled || env.points.len() < 2 {
+        painter.text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            if env.enabled { "NO POINTS" } else { "DISABLED" },
+            FontId::monospace(10.0),
+            COLOR_TEXT_DIM,
+        );
+        return;
+    }
+
+    let max_tick = env.points.last().map(|(t, _)| *t).unwrap_or(1).max(1) as f32;
+    let margin = 4.0;
+    let draw_w = width - margin * 2.0;
+    let draw_h = height - margin * 2.0;
+
+    let to_pos = |tick: u16, val: u16| -> Pos2 {
+        let x = rect.left() + margin + (tick as f32 / max_tick) * draw_w;
+        let y = rect.top() + margin + draw_h * (1.0 - val as f32 / 64.0);
+        Pos2::new(x, y)
+    };
+
+    if let Some((ls, le)) = env.loop_range
+        && ls < env.points.len() && le < env.points.len() {
+            let x0 = to_pos(env.points[ls].0, 0).x;
+            let x1 = to_pos(env.points[le].0, 0).x;
+            let loop_rect =
+                egui::Rect::from_min_max(Pos2::new(x0, rect.top()), Pos2::new(x1, rect.bottom()));
+            painter.rect_filled(
+                loop_rect,
+                0.0,
+                egui::Color32::from_rgba_premultiplied(120, 100, 60, 25),
+            );
+        }
+
+    if let Some(si) = env.sustain_point
+        && si < env.points.len() {
+            let x = to_pos(env.points[si].0, 0).x;
+            let dash_color = egui::Color32::from_rgba_premultiplied(200, 180, 120, 80);
+            let mut y = rect.top();
+            while y < rect.bottom() {
+                let y_end = (y + 3.0).min(rect.bottom());
+                painter.line_segment(
+                    [Pos2::new(x, y), Pos2::new(x, y_end)],
+                    Stroke::new(1.0, dash_color),
+                );
+                y += 6.0;
+            }
+        }
+
+    let line_color = COLOR_MODE_SETTINGS;
+    let points_pos: Vec<Pos2> = env.points.iter().map(|&(t, v)| to_pos(t, v)).collect();
+    for window in points_pos.windows(2) {
+        painter.line_segment([window[0], window[1]], Stroke::new(1.5, line_color));
+    }
+
+    let dot_color = COLOR_TEXT;
+    for (i, &pos) in points_pos.iter().enumerate() {
+        let r = if Some(i) == env.sustain_point {
+            3.5
+        } else {
+            2.5
+        };
+        painter.circle_filled(pos, r, dot_color);
+    }
+}
+
+pub fn draw_instrument_list(ui: &mut egui::Ui, app: &mut App) {
+    egui::Frame::new()
+        .fill(COLOR_LAYOUT_BG_PANEL)
+        .inner_margin(egui::Margin::symmetric(12, 10))
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+
+            ui.label(
+                RichText::new("Instruments")
+                    .font(FontId::monospace(15.0))
+                    .color(COLOR_MODE_SETTINGS)
+                    .strong(),
+            );
+            ui.add_space(2.0);
+            ui.painter().line_segment(
+                [
+                    ui.cursor().left_top(),
+                    ui.cursor().left_top() + Vec2::new(ui.available_width(), 0.0),
+                ],
+                Stroke::new(1.0, COLOR_TEXT_DIM),
+            );
+            ui.add_space(4.0);
+
+            egui::ScrollArea::vertical()
+                .max_height(180.0)
+                .auto_shrink([false; 2])
+                .show(ui, |ui| {
+                    for (i, inst) in app.project.instruments.iter().enumerate() {
+                        let is_current = i == app.current_instrument;
+                        let label = format!("{:02X}: {}", i, inst.name);
+
+                        let (bg, fg) = if is_current {
+                            (COLOR_PATTERN_CURSOR_BG, COLOR_PATTERN_CURSOR_TEXT)
+                        } else {
+                            (egui::Color32::TRANSPARENT, COLOR_TEXT_DIM)
+                        };
+
+                        let (rect, response) = ui.allocate_exact_size(
+                            Vec2::new(ui.available_width(), 16.0),
+                            egui::Sense::click(),
+                        );
+
+                        if bg != egui::Color32::TRANSPARENT {
+                            ui.painter().rect_filled(rect, 2.0, bg);
+                        }
+
+                        if response.hovered() && !is_current {
+                            ui.painter().rect_filled(
+                                rect,
+                                2.0,
+                                egui::Color32::from_rgba_premultiplied(80, 70, 90, 40),
+                            );
+                        }
+
+                        ui.painter().text(
+                            Pos2::new(rect.left() + 4.0, rect.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            &label,
+                            FontId::monospace(11.0),
+                            fg,
+                        );
+
+                        if response.clicked() {
+                            app.current_instrument = i;
+                        }
+                    }
+                });
+        });
 }

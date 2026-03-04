@@ -1,4 +1,4 @@
-use eframe::egui::{self, FontId, RichText, Stroke};
+use eframe::egui::{self, FontId, RichText, Sense, Stroke};
 use egui_extras::{Column, TableBuilder};
 
 use crate::app::{App, Mode, SubColumn};
@@ -6,10 +6,13 @@ use crate::project::{Cell, effect_display, instrument_display, volume_display};
 
 use super::{
     COLOR_LAYOUT_BG_DARK, COLOR_PATTERN_CURSOR_BG, COLOR_PATTERN_CURSOR_TEXT, COLOR_PATTERN_EFFECT,
-    COLOR_PATTERN_NOTE, COLOR_PATTERN_NOTE_OFF, COLOR_PATTERN_PLAYBACK_HIGHLIGHT,
-    COLOR_PATTERN_PLAYBACK_TEXT, COLOR_PATTERN_SELECTION_BG, COLOR_PATTERN_SELECTION_TEXT,
-    COLOR_PATTERN_SUBDIVISION, COLOR_TEXT_DIM,
+    COLOR_PATTERN_INSTRUMENT, COLOR_PATTERN_NOTE, COLOR_PATTERN_NOTE_OFF,
+    COLOR_PATTERN_PLAYBACK_HIGHLIGHT, COLOR_PATTERN_PLAYBACK_TEXT, COLOR_PATTERN_SELECTION_BG,
+    COLOR_PATTERN_SELECTION_TEXT, COLOR_PATTERN_SUBDIVISION, COLOR_PATTERN_VOLUME, COLOR_TEXT,
+    COLOR_TEXT_DIM,
 };
+
+const COLOR_MUTED: egui::Color32 = egui::Color32::from_rgb(180, 80, 70);
 
 const FONT: FontId = FontId::monospace(14.0);
 const ROW_HEIGHT: f32 = 18.0;
@@ -57,7 +60,7 @@ pub fn draw_pattern(ctx: &egui::Context, app: &mut App) {
 
                     table
                         .header(ROW_HEIGHT, |mut header| {
-                            draw_header_row(&mut header, channels);
+                            draw_header_row(&mut header, channels, &mut app.muted_channels);
                         })
                         .body(|body| {
                             body.rows(ROW_HEIGHT, app.project.current_pattern().rows, |mut row| {
@@ -68,7 +71,11 @@ pub fn draw_pattern(ctx: &egui::Context, app: &mut App) {
         });
 }
 
-fn draw_header_row(header: &mut egui_extras::TableRow<'_, '_>, channels: usize) {
+fn draw_header_row(
+    header: &mut egui_extras::TableRow<'_, '_>,
+    channels: usize,
+    muted: &mut Vec<bool>,
+) {
     header.col(|ui| {
         ui.add_space(CELL_PAD);
     });
@@ -77,12 +84,42 @@ fn draw_header_row(header: &mut egui_extras::TableRow<'_, '_>, channels: usize) 
         header.col(|ui| {
             draw_left_border(ui);
 
+            let is_muted = muted.get(ch).copied().unwrap_or(false);
+
+            let label = if is_muted {
+                format!("M{}", ch + 1)
+            } else {
+                format!("{}", ch + 1)
+            };
+
+            let color = if is_muted {
+                COLOR_MUTED
+            } else {
+                COLOR_TEXT_DIM
+            };
+
             ui.add_space(CELL_PAD);
-            ui.label(
-                RichText::new(format!("{}", ch + 1))
-                    .font(FONT)
-                    .color(COLOR_TEXT_DIM),
+            let response = ui.add(
+                egui::Label::new(RichText::new(&label).font(FONT).color(color))
+                    .sense(Sense::click()),
             );
+
+            if response.hovered() && !is_muted {
+                ui.painter().text(
+                    response.rect.left_center() + egui::vec2(0.0, 0.0),
+                    egui::Align2::LEFT_CENTER,
+                    &label,
+                    FONT,
+                    COLOR_TEXT,
+                );
+            }
+
+            if response.clicked() {
+                if ch >= muted.len() {
+                    muted.resize(ch + 1, false);
+                }
+                muted[ch] = !muted[ch];
+            }
         });
         for _ in 0..3 {
             header.col(|ui| {
@@ -231,7 +268,7 @@ fn draw_body_row(row: &mut egui_extras::TableRow<'_, '_>, app: &mut App, channel
             } else if is_playback_row {
                 COLOR_PATTERN_PLAYBACK_TEXT
             } else {
-                COLOR_PATTERN_EFFECT
+                COLOR_PATTERN_INSTRUMENT
             };
 
             let mut inst_rt = RichText::new(&inst_text).font(FONT).color(inst_color);
@@ -273,7 +310,7 @@ fn draw_body_row(row: &mut egui_extras::TableRow<'_, '_>, app: &mut App, channel
             } else if is_playback_row {
                 COLOR_PATTERN_PLAYBACK_TEXT
             } else {
-                COLOR_PATTERN_EFFECT
+                COLOR_PATTERN_VOLUME
             };
 
             let mut vol_rt = RichText::new(&vol_text).font(FONT).color(vol_color);

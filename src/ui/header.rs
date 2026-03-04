@@ -75,6 +75,19 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                         .strong(),
                 );
 
+                ui.add_space(16.0);
+                let pattern_rows = app.project.current_pattern().rows;
+                let display_row = if app.playback.playing {
+                    app.playback_row_display
+                } else {
+                    app.cursor.row
+                };
+                ui.label(
+                    RichText::new(format!("Row {:02}/{:02}", display_row, pattern_rows))
+                        .font(FontId::monospace(12.0))
+                        .color(COLOR_TEXT_DIM),
+                );
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let export_btn = ui.add(
                         egui::Button::new(

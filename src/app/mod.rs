@@ -26,10 +26,11 @@ pub enum SynthSettingsField {
     LoopType,
     LoopStart,
     LoopLength,
-    Attack,
-    Decay,
-    Sustain,
-    Release,
+    Fadeout,
+    VibratoType,
+    VibratoSweep,
+    VibratoDepth,
+    VibratoRate,
 }
 
 impl SynthSettingsField {
@@ -38,24 +39,26 @@ impl SynthSettingsField {
             Self::Instrument => Self::LoopType,
             Self::LoopType => Self::LoopStart,
             Self::LoopStart => Self::LoopLength,
-            Self::LoopLength => Self::Attack,
-            Self::Attack => Self::Decay,
-            Self::Decay => Self::Sustain,
-            Self::Sustain => Self::Release,
-            Self::Release => Self::Instrument,
+            Self::LoopLength => Self::Fadeout,
+            Self::Fadeout => Self::VibratoType,
+            Self::VibratoType => Self::VibratoSweep,
+            Self::VibratoSweep => Self::VibratoDepth,
+            Self::VibratoDepth => Self::VibratoRate,
+            Self::VibratoRate => Self::Instrument,
         }
     }
 
     pub const fn prev(self) -> Self {
         match self {
-            Self::Instrument => Self::Release,
+            Self::Instrument => Self::VibratoRate,
             Self::LoopType => Self::Instrument,
             Self::LoopStart => Self::LoopType,
             Self::LoopLength => Self::LoopStart,
-            Self::Attack => Self::LoopLength,
-            Self::Decay => Self::Attack,
-            Self::Sustain => Self::Decay,
-            Self::Release => Self::Sustain,
+            Self::Fadeout => Self::LoopLength,
+            Self::VibratoType => Self::Fadeout,
+            Self::VibratoSweep => Self::VibratoType,
+            Self::VibratoDepth => Self::VibratoSweep,
+            Self::VibratoRate => Self::VibratoDepth,
         }
     }
 
@@ -90,21 +93,25 @@ impl SynthSettingsField {
                     sd.loop_length.saturating_sub(step)
                 };
             }
-            Self::Attack => {
-                inst.envelope.attack =
-                    (inst.envelope.attack + 0.005 * f32::from(delta)).clamp(0.0, 2.0);
+            Self::Fadeout => {
+                inst.vol_fadeout =
+                    (i32::from(inst.vol_fadeout) + i32::from(delta) * 16).clamp(0, 4095) as u16;
             }
-            Self::Decay => {
-                inst.envelope.decay =
-                    (inst.envelope.decay + 0.005 * f32::from(delta)).clamp(0.0, 2.0);
+            Self::VibratoType => {
+                inst.vibrato_type = if delta > 0 {
+                    (inst.vibrato_type + 1).min(3)
+                } else {
+                    inst.vibrato_type.saturating_sub(1)
+                };
             }
-            Self::Sustain => {
-                inst.envelope.sustain =
-                    (inst.envelope.sustain + 0.05 * f32::from(delta)).clamp(0.0, 1.0);
+            Self::VibratoSweep => {
+                inst.vibrato_sweep = (i16::from(inst.vibrato_sweep) + delta).clamp(0, 255) as u8;
             }
-            Self::Release => {
-                inst.envelope.release =
-                    (inst.envelope.release + 0.005 * f32::from(delta)).clamp(0.0, 2.0);
+            Self::VibratoDepth => {
+                inst.vibrato_depth = (i16::from(inst.vibrato_depth) + delta).clamp(0, 15) as u8;
+            }
+            Self::VibratoRate => {
+                inst.vibrato_rate = (i16::from(inst.vibrato_rate) + delta).clamp(0, 63) as u8;
             }
         }
     }
@@ -247,6 +254,7 @@ pub struct App {
     pub show_controls_modal: bool,
     pub show_about_modal: bool,
     pub clipboard: Option<ClipboardData>,
+    pub muted_channels: Vec<bool>,
 }
 
 impl App {
@@ -282,6 +290,7 @@ impl App {
             show_controls_modal: false,
             show_about_modal: false,
             clipboard: None,
+            muted_channels: vec![false; 32],
         }
     }
 

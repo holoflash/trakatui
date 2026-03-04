@@ -1,7 +1,7 @@
 use eframe::egui::{self, Key};
 
 use crate::app::keybindings::Action;
-use crate::app::scale::{Scale, map_key_index_to_midi};
+use crate::app::scale::{Scale, map_key_index_to_note};
 use crate::project::Note;
 use crate::project::{Cell, Effect, SampleData};
 
@@ -743,9 +743,9 @@ impl App {
         }
 
         let can_transpose = if delta > 0 {
-            max_pitch.is_some_and(|p| (i16::from(p) + delta) <= 127)
+            max_pitch.is_some_and(|p| (i16::from(p) + delta) <= 96)
         } else {
-            min_pitch.is_some_and(|p| (i16::from(p) + delta) >= 0)
+            min_pitch.is_some_and(|p| (i16::from(p) + delta) >= 1)
         };
 
         if can_transpose {
@@ -1147,7 +1147,7 @@ pub fn key_to_note(key: Key, octave: u8, scale: &Scale, transpose: i8) -> Option
     };
 
     idx.map(|i| {
-        let midi = map_key_index_to_midi(i, octave, scale, transpose);
-        Note::new(midi)
+        let note = map_key_index_to_note(i, octave, scale, transpose);
+        Note::new(note)
     })
 }
