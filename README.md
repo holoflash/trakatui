@@ -6,36 +6,57 @@ A lightweight cross-platform music tracker built with Rust.
 
 ## 🚧 UNDER DEVELOPMENT
 
-All features are subject to change without notice before version 1.0.0
+### Features
 
-This project is inspired by, but doesn't strive to replace - the trackers of the late 90s and early 2000s.
+**Playback & Audio**
 
-If you're looking for a great modern alternative, check out [**Furnace**](https://github.com/tildearrow/furnace).
+- Real-time playback with play-from-cursor support
+- Stereo WAV export (44.1kHz, 16-bit)
+- Master volume control with peak meter
+- Per-channel muting/soloing
 
-### TODO
+**Pattern Editor**
 
-- [ ] Make the settings panel more compact
-- [ ] All XM effects
-- [ ] MOD import
-- [ ] XM export
-- [x] XM import
-- [x] Sample loops (forward, ping-pong)
-- [x] Multi-pattern support with order table
-- [x] Sampler channel
-- [x] Pitch bend effect
-- [x] Effects column
-- [x] Pattern editor
-- [x] Built-in synthesizer
-- [x] Real-time playback
-- [x] WAV export (44.1kHz, 16-bit)
-- [x] Settings panel
-- [x] Chromatic keyboard note input
-- [x] Scale selection
-- [x] Octave control
-- [x] BPM control
-- [x] Pattern length control
-- [x] Transpose control
-- [x] Instrument/Synth editing
+- Note, instrument, volume, and effect columns
+- Multi-pattern support with order table
+- Selection, copy/paste, fill, and transpose
+- Configurable edit step and subdivision
+
+**Instruments & Synthesis**
+
+- 5 built-in waveforms (sine, triangle, square, saw, noise)
+- Sample import with drag-and-drop
+- Sample loops and volume envelopes
+- Auto-vibrato
+- Envelope editor
+
+**XM Format**
+
+- Support for all XM effects and commands
+- XM module loading and playback
+
+**UI & Input**
+
+- Chromatic keyboard input (Z-P)
+- Musical scales for input transposition
+- Keyboard shortcut reference
+
+**TODO**
+
+- Make the settings panel more compact
+- Undo
+- MOD import
+- MOD export
+- XM export
+- Native project save/load
+
+> _All features are subject to change without notice before version 1.0.0_
+
+---
+
+This project is inspired by the trackers of the late 90s and early 2000s and builds upon the .xm format as documented [here](https://github.com/milkytracker/MilkyTracker/blob/master/resources/reference/xm-form.txt).
+
+If you're looking for a great fully featured modern alternative, check out [**Furnace**](https://github.com/tildearrow/furnace).
 
 ## Install
 
