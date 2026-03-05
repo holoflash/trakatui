@@ -1,5 +1,6 @@
 /// Everything in this module is saveable project data.
 pub mod channel;
+pub mod mod_file;
 pub mod pattern;
 pub mod sample;
 pub mod xm;
@@ -18,11 +19,13 @@ pub struct Project {
     pub current_order_idx: usize,
     pub instruments: Vec<Instrument>,
     pub bpm: u16,
+    pub initial_speed: u16,
     pub subdivision: usize,
     pub step: usize,
     pub scale_index: ScaleIndex,
     pub transpose: i8,
     pub master_volume_db: f32,
+    pub channel_panning: Vec<f32>,
 }
 
 impl Project {
@@ -33,11 +36,13 @@ impl Project {
             current_order_idx: 0,
             instruments: Instrument::defaults(),
             bpm: 120,
+            initial_speed: 6,
             subdivision: 4,
             step: 1,
             scale_index: ScaleIndex::default(),
             transpose: 0,
             master_volume_db: 0.0,
+            channel_panning: Vec::new(),
         }
     }
 

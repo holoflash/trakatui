@@ -109,8 +109,10 @@ impl AudioEngine {
         order: &[usize],
         instruments: &[Instrument],
         bpm: u16,
+        speed: u16,
         master_volume: f32,
         muted_channels: &[bool],
+        channel_panning: &[f32],
     ) {
         let snapshots: Vec<Arc<PatternSnapshot>> = patterns
             .iter()
@@ -118,9 +120,11 @@ impl AudioEngine {
             .collect();
         let settings = Arc::new(PlaybackSettings {
             bpm,
+            speed,
             master_volume,
             instruments: instruments.to_vec(),
             muted_channels: muted_channels.to_vec(),
+            channel_panning: channel_panning.to_vec(),
         });
         let _ = self.sender.send(Command::Play {
             start_row: row,
@@ -139,14 +143,18 @@ impl AudioEngine {
         &self,
         instruments: &[Instrument],
         bpm: u16,
+        speed: u16,
         master_volume: f32,
         muted_channels: &[bool],
+        channel_panning: &[f32],
     ) {
         let settings = Arc::new(PlaybackSettings {
             bpm,
+            speed,
             master_volume,
             instruments: instruments.to_vec(),
             muted_channels: muted_channels.to_vec(),
+            channel_panning: channel_panning.to_vec(),
         });
         let _ = self.sender.send(Command::UpdateSettings { settings });
     }

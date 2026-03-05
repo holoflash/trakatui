@@ -403,11 +403,13 @@ pub fn load_xm(path: &Path) -> Result<Project, String> {
         current_order_idx: 0,
         instruments,
         bpm: default_bpm,
+        initial_speed: default_speed,
         subdivision: default_speed as usize,
         step: 1,
         scale_index: ScaleIndex::default(),
         transpose: 0,
         master_volume_db: 0.0,
+        channel_panning: Vec::new(),
     })
 }
 

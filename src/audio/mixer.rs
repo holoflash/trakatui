@@ -44,9 +44,11 @@ pub enum Command {
 
 pub struct PlaybackSettings {
     pub bpm: u16,
+    pub speed: u16,
     pub master_volume: f32,
     pub instruments: Vec<Instrument>,
     pub muted_channels: Vec<bool>,
+    pub channel_panning: Vec<f32>,
 }
 
 pub struct PatternSnapshot {
@@ -573,13 +575,35 @@ impl TrackerSource {
                 Command::Stop => {
                     self.playing = false;
                     for ch in &mut self.channels {
-                        ch.active = false;
+                        *ch = Channel::new();
                     }
+                    self.current_row = 0;
+                    self.current_order_idx = 0;
+                    self.tick_sample_counter = 0.0;
+                    self.tick_in_row = 0;
+                    self.speed = 6;
+                    self.bpm = 125;
+                    self.samples_per_tick =
+                        f64::from(SAMPLE_RATE) * 5.0 / (f64::from(125u16) * 2.0);
+                    self.master_volume = 1.0;
+                    self.jump_to_order = None;
+                    self.break_to_row = None;
+                    self.stereo_phase = false;
+                    self.left_sample = 0.0;
+                    self.right_sample = 0.0;
+                    self.muted_channels.clear();
+                    self.stop_at_end = false;
+                    self.patterns.clear();
+                    self.order.clear();
+                    self.settings = None;
                 }
                 Command::UpdateSettings { settings } => {
                     if self.playing {
-                        self.samples_per_tick =
-                            f64::from(SAMPLE_RATE) * 5.0 / (f64::from(settings.bpm) * 2.0);
+                        if settings.bpm != self.bpm {
+                            self.bpm = settings.bpm;
+                            self.samples_per_tick =
+                                f64::from(SAMPLE_RATE) * 5.0 / (f64::from(self.bpm) * 2.0);
+                        }
                         self.master_volume = settings.master_volume;
                         self.muted_channels = settings.muted_channels.clone();
                         self.settings = Some(settings);
@@ -646,13 +670,24 @@ impl TrackerSource {
         for ch in &mut self.channels {
             *ch = Channel::new();
         }
+        for (i, ch) in self.channels.iter_mut().enumerate() {
+            if let Some(&pan) = settings.channel_panning.get(i) {
+                ch.panning = pan;
+            }
+        }
 
         self.samples_per_tick = f64::from(SAMPLE_RATE) * 5.0 / (f64::from(settings.bpm) * 2.0);
+        self.speed = settings.speed;
+        self.bpm = settings.bpm;
         self.master_volume = settings.master_volume;
         self.current_row = start_row;
         self.current_order_idx = start_order;
         self.tick_sample_counter = 0.0;
         self.tick_in_row = 0;
+        self.jump_to_order = None;
+        self.break_to_row = None;
+        self.stop_at_end = false;
+        self.muted_channels = settings.muted_channels.clone();
         self.patterns = patterns;
         self.order = order;
         self.settings = Some(settings);
@@ -1084,9 +1119,11 @@ pub fn export_source(
         .collect();
     let settings = Arc::new(PlaybackSettings {
         bpm,
+        speed: DEFAULT_SPEED,
         master_volume,
         instruments: instruments.to_vec(),
         muted_channels: Vec::new(),
+        channel_panning: Vec::new(),
     });
 
     let _ = sender.send(Command::Play {
@@ -1119,9 +1156,11 @@ mod tests {
         let snapshot = Arc::new(PatternSnapshot::from_pattern(pattern));
         let settings = Arc::new(PlaybackSettings {
             bpm: 125,
+            speed: DEFAULT_SPEED,
             master_volume: 1.0,
             instruments: Instrument::defaults(),
             muted_channels: Vec::new(),
+            channel_panning: Vec::new(),
         });
         Command::Play {
             start_row: 0,

@@ -208,7 +208,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                     let open_btn = ui
                         .add(
                             egui::Button::new(
-                                RichText::new(" Open XM file ")
+                                RichText::new(" Open Module ")
                                     .font(FontId::monospace(12.0))
                                     .color(COLOR_PATTERN_CURSOR_TEXT),
                             )
@@ -219,7 +219,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
 
                     open_btn.surrender_focus();
                     if open_btn.clicked() {
-                        app.open_xm_file();
+                        app.open_module_file();
                     }
                 });
             });

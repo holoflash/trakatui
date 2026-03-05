@@ -28,7 +28,7 @@ pub fn draw_order_bar(ctx: &egui::Context, app: &mut App) {
     let mut actions: Vec<OrderAction> = Vec::new();
 
     let panel_w = COLS as f32 * CELL_W + (COLS - 1) as f32;
-    let grid_rows = (order_len + COLS - 1) / COLS;
+    let grid_rows = order_len.div_ceil(COLS);
 
     egui::SidePanel::left("order_bar")
         .resizable(false)

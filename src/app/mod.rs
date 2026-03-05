@@ -166,16 +166,14 @@ impl SynthSettingsField {
                     if *point_idx >= env.points.len() {
                         *point_idx = env.points.len() - 1;
                     }
-                    if let Some(sp) = env.sustain_point {
-                        if sp >= env.points.len() {
+                    if let Some(sp) = env.sustain_point
+                        && sp >= env.points.len() {
                             env.sustain_point = None;
                         }
-                    }
-                    if let Some((ls, le)) = env.loop_range {
-                        if ls >= env.points.len() || le >= env.points.len() {
+                    if let Some((ls, le)) = env.loop_range
+                        && (ls >= env.points.len() || le >= env.points.len()) {
                             env.loop_range = None;
                         }
-                    }
                 }
             }
             Self::EnvPoint => {

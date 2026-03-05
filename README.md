@@ -35,6 +35,10 @@ A lightweight cross-platform music tracker built with Rust.
 - Support for all XM effects and commands
 - XM module loading and playback
 
+**MOD Format**
+
+- MOD module loading and playback
+
 **UI & Input**
 
 - Chromatic keyboard input (Z-P)
@@ -45,7 +49,6 @@ A lightweight cross-platform music tracker built with Rust.
 
 - Make the settings panel more compact
 - Undo
-- MOD import
 - MOD export
 - XM export
 - Native project save/load
