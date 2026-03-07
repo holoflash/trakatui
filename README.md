@@ -51,8 +51,11 @@ _In order of importance_
 
 1. Undo/Redo
 2. Native project save/load
-3. XM export
-4. MOD export
+3. Add ability to add more instruments
+4. Auto insert instrument number to pattern from selected instrument
+5. Right click cell to see and insert available commands
+6. XM export
+7. MOD export
 
 > _All features are subject to change without notice before version 1.0.0_
 
