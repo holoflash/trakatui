@@ -132,26 +132,6 @@ impl ScaleIndex {
     pub fn scale(self) -> &'static Scale {
         &SCALES[self.0]
     }
-
-    pub const fn next(self) -> Self {
-        Self((self.0 + 1) % SCALES.len())
-    }
-
-    pub const fn prev(self) -> Self {
-        if self.0 == 0 {
-            Self(SCALES.len() - 1)
-        } else {
-            Self(self.0 - 1)
-        }
-    }
-}
-
-const NOTE_NAMES: [&str; 12] = [
-    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
-];
-
-pub const fn root_name(transpose: i8) -> &'static str {
-    NOTE_NAMES[transpose.rem_euclid(12) as usize]
 }
 
 pub fn map_key_index_to_note(key_index: u8, octave: u8, scale: &Scale, transpose: i8) -> u8 {

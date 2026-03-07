@@ -1,6 +1,6 @@
 use eframe::egui::{self, FontId, RichText};
 
-use super::{COLOR_MODE_SETTINGS, COLOR_TEXT, COLOR_TEXT_DIM};
+use super::{COLOR_ACCENT, COLOR_TEXT, COLOR_TEXT_DIM};
 
 pub fn settings_row(ui: &mut egui::Ui, label: &str, value: &str, active: bool) {
     ui.horizontal(|ui| {
@@ -16,7 +16,7 @@ pub fn settings_row(ui: &mut egui::Ui, label: &str, value: &str, active: bool) {
             egui::Color32::TRANSPARENT
         };
         let value_color = if active {
-            COLOR_MODE_SETTINGS
+            COLOR_ACCENT
         } else {
             COLOR_TEXT
         };

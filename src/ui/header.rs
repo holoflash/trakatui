@@ -1,12 +1,12 @@
 use std::sync::atomic::Ordering;
 
-use eframe::egui::{self, FontId, RichText, Stroke};
+use eframe::egui::{self, FontId, RichText, Stroke, Vec2};
 
-use crate::app::{App, Mode, scale::root_name};
+use crate::app::{App, scale::SCALES};
 
 use super::{
-    COLOR_LAYOUT_BG_PANEL, COLOR_LAYOUT_BORDER, COLOR_LAYOUT_BORDER_ACTIVE, COLOR_MODE_EDIT,
-    COLOR_MODE_PLAYING, COLOR_MODE_SETTINGS, COLOR_PATTERN_CURSOR_TEXT, COLOR_TEXT_DIM,
+    COLOR_ACCENT, COLOR_LAYOUT_BG_PANEL, COLOR_LAYOUT_BORDER, COLOR_PATTERN_CURSOR_TEXT,
+    COLOR_TEXT_ACTIVE, COLOR_TEXT_DIM,
 };
 
 const fn clamp_to_u8(v: f32) -> u8 {
@@ -32,111 +32,166 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                 .inner_margin(egui::Margin::symmetric(12, 8)),
         )
         .show(ctx, |ui| {
+            ui.style_mut().drag_value_text_style = egui::TextStyle::Monospace;
+
             ui.horizontal(|ui| {
                 ui.add_space(4.0);
                 let logo_btn = ui
                     .add(
                         egui::ImageButton::new(
                             egui::Image::new(egui::include_image!("../../psikat.png"))
-                                .fit_to_exact_size(egui::Vec2::new(48.0, 48.0))
+                                .fit_to_exact_size(Vec2::new(48.0, 48.0))
                                 .texture_options(egui::TextureOptions::NEAREST),
                         )
                         .frame(false),
                     )
                     .on_hover_cursor(egui::CursorIcon::PointingHand);
-
                 logo_btn.surrender_focus();
-
                 if logo_btn.clicked() {
                     app.show_about_modal = !app.show_about_modal;
                 }
-                ui.add_space(16.0);
-                let root = root_name(app.project.transpose);
-                let scale_name = app.project.scale_index.scale().name;
-                ui.label(
-                    RichText::new(format!("{root}-{} {scale_name}", app.cursor.octave))
-                        .font(FontId::monospace(13.0))
-                        .color(COLOR_MODE_PLAYING),
-                );
+                ui.add_space(8.0);
 
-                ui.add_space(16.0);
-                draw_volume_control(ui, app);
-                ui.add_space(16.0);
-
-                let (mode_str, mode_color) = if app.playback.playing {
-                    ("PLAYING", COLOR_MODE_PLAYING)
-                } else {
-                    match app.mode {
-                        Mode::Edit => ("EDIT", COLOR_MODE_EDIT),
-                        Mode::Settings => ("SETTINGS", COLOR_MODE_SETTINGS),
-                        Mode::SynthEdit => ("SYNTH", COLOR_MODE_SETTINGS),
-                    }
-                };
-                ui.label(
-                    RichText::new(format!("[{mode_str}]"))
-                        .font(FontId::monospace(14.0))
-                        .color(mode_color)
-                        .strong(),
-                );
-
-                ui.add_space(16.0);
-                let pattern_rows = app.project.current_pattern().rows;
-                let display_row = if app.playback.playing {
-                    app.playback_row_display
-                } else {
-                    app.cursor.row
-                };
-                ui.label(
-                    RichText::new(format!("Row {:02}/{:02}", display_row, pattern_rows))
-                        .font(FontId::monospace(12.0))
-                        .color(COLOR_TEXT_DIM),
-                );
-
-                ui.add_space(12.0);
-                let follow_label = if app.follow_playback {
-                    " ▶ Follow "
-                } else {
-                    " - Follow "
-                };
-                let follow_color = if app.follow_playback {
-                    COLOR_PATTERN_CURSOR_TEXT
-                } else {
-                    COLOR_TEXT_DIM
-                };
-                let follow_btn = ui
-                    .add(
-                        egui::Button::new(
-                            RichText::new(follow_label)
-                                .font(FontId::monospace(12.0))
-                                .color(follow_color),
-                        )
-                        .fill(if app.follow_playback {
-                            COLOR_LAYOUT_BORDER
-                        } else {
-                            COLOR_LAYOUT_BG_PANEL
-                        })
-                        .stroke(Stroke::new(
-                            1.0,
-                            if app.follow_playback {
-                                COLOR_PATTERN_CURSOR_TEXT
-                            } else {
-                                COLOR_TEXT_DIM
-                            },
-                        )),
+                egui::ComboBox::from_id_salt("file_menu")
+                    .selected_text(
+                        RichText::new("File")
+                            .font(FontId::monospace(12.0))
+                            .color(COLOR_TEXT_ACTIVE),
                     )
-                    .on_hover_cursor(egui::CursorIcon::PointingHand);
+                    .width(60.0)
+                    .show_ui(ui, |ui| {
+                        if ui
+                            .selectable_label(
+                                false,
+                                RichText::new("Open Module").color(COLOR_TEXT_ACTIVE),
+                            )
+                            .clicked()
+                        {
+                            ui.close_menu();
+                            app.open_module_file();
+                        }
+                        if ui
+                            .selectable_label(
+                                false,
+                                RichText::new("Export WAV").color(COLOR_TEXT_ACTIVE),
+                            )
+                            .clicked()
+                        {
+                            ui.close_menu();
+                            app.do_export();
+                        }
+                        ui.separator();
+                        if ui
+                            .selectable_label(false, RichText::new("Help").color(COLOR_TEXT_ACTIVE))
+                            .clicked()
+                        {
+                            ui.close_menu();
+                            app.show_controls_modal = !app.show_controls_modal;
+                        }
+                    });
 
-                follow_btn.surrender_focus();
-                if follow_btn.clicked() {
-                    app.follow_playback = !app.follow_playback;
+                ui.add_space(24.0);
+
+                app.text_editing = false;
+
+                draw_field(ui, "BPM");
+                let r = ui
+                    .add(
+                        egui::DragValue::new(&mut app.project.bpm)
+                            .range(20..=666)
+                            .speed(0.5),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+                if r.has_focus() {
+                    app.text_editing = true;
                 }
 
+                draw_field(ui, "DIV");
+                let r = ui
+                    .add(
+                        egui::DragValue::new(&mut app.project.subdivision)
+                            .range(2..=64)
+                            .speed(0.2),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+                if r.has_focus() {
+                    app.text_editing = true;
+                }
+
+                draw_field(ui, "LEN");
+                let mut len = app.project.current_pattern().rows;
+                let r = ui
+                    .add(egui::DragValue::new(&mut len).range(1..=128).speed(0.3))
+                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+                if r.has_focus() {
+                    app.text_editing = true;
+                }
+                if r.changed() {
+                    app.project.current_pattern_mut().resize(len);
+                    if app.cursor.row >= len {
+                        app.cursor.row = len - 1;
+                    }
+                }
+
+                draw_field(ui, "STEP");
+                let r = ui
+                    .add(
+                        egui::DragValue::new(&mut app.project.step)
+                            .range(1..=64)
+                            .speed(0.2),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+                if r.has_focus() {
+                    app.text_editing = true;
+                }
+
+                ui.add_space(24.0);
+                draw_field(ui, "INPUT");
+                let r = ui
+                    .add(
+                        egui::DragValue::new(&mut app.project.transpose)
+                            .range(-12..=12)
+                            .speed(0.15)
+                            .custom_formatter(|v, _| {
+                                let i = v as i32;
+                                if i > 0 {
+                                    format!("+{i}")
+                                } else if i == 0 {
+                                    " 0".to_string()
+                                } else {
+                                    format!("{i}")
+                                }
+                            }),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+                if r.has_focus() {
+                    app.text_editing = true;
+                }
+
+                let current_name = app.project.scale_index.scale().name;
+                egui::ComboBox::from_id_salt("scale_combo")
+                    .selected_text(RichText::new(current_name).font(FontId::monospace(12.0)))
+                    .width(160.0)
+                    .show_ui(ui, |ui| {
+                        for (i, scale) in SCALES.iter().enumerate() {
+                            let color = if app.project.scale_index.0 == i {
+                                COLOR_ACCENT
+                            } else {
+                                COLOR_TEXT_ACTIVE
+                            };
+                            ui.selectable_value(
+                                &mut app.project.scale_index.0,
+                                i,
+                                RichText::new(scale.name).color(color),
+                            );
+                        }
+                    });
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let sidebar_icon = if app.show_sidebar { " ▶ " } else { " ◀ " };
-                    let sidebar_btn = ui
+                    let btn = ui
                         .add(
                             egui::Button::new(
-                                RichText::new(sidebar_icon)
+                                RichText::new("INSTRUMENT")
                                     .font(FontId::monospace(12.0))
                                     .color(if app.show_sidebar {
                                         COLOR_PATTERN_CURSOR_TEXT
@@ -159,116 +214,96 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                             )),
                         )
                         .on_hover_cursor(egui::CursorIcon::PointingHand);
-
-                    sidebar_btn.surrender_focus();
-                    if sidebar_btn.clicked() {
+                    btn.surrender_focus();
+                    if btn.clicked() {
                         app.show_sidebar = !app.show_sidebar;
                     }
 
+                    ui.add_space(8.0);
+                    draw_peak_meter(ui, app);
                     ui.add_space(4.0);
 
-                    let export_btn = ui
+                    draw_field(ui, "VOL");
+                    let r = ui
                         .add(
-                            egui::Button::new(
-                                RichText::new(" Export WAV ")
-                                    .font(FontId::monospace(12.0))
-                                    .color(COLOR_PATTERN_CURSOR_TEXT),
-                            )
-                            .fill(COLOR_LAYOUT_BORDER)
-                            .stroke(Stroke::new(1.0, COLOR_LAYOUT_BORDER_ACTIVE)),
+                            egui::DragValue::new(&mut app.project.master_volume_db)
+                                .range(-60.0..=6.0)
+                                .speed(0.2)
+                                .custom_formatter(|v, _| {
+                                    let i = v.round() as i32;
+                                    let s = if i > 0 {
+                                        format!("+{i}")
+                                    } else {
+                                        format!("{i}")
+                                    };
+                                    format!("{s:>3} dB")
+                                })
+                                .fixed_decimals(1),
                         )
-                        .on_hover_cursor(egui::CursorIcon::PointingHand);
-
-                    export_btn.surrender_focus();
-                    if export_btn.clicked() {
-                        app.do_export();
+                        .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+                    if r.has_focus() {
+                        app.text_editing = true;
+                    }
+                    if r.double_clicked() {
+                        app.project.master_volume_db = 0.0;
                     }
 
-                    ui.add_space(4.0);
+                    ui.add_space(8.0);
 
-                    let ctrl_btn = ui
+                    let follow_color = if app.follow_playback {
+                        COLOR_PATTERN_CURSOR_TEXT
+                    } else {
+                        COLOR_TEXT_DIM
+                    };
+                    let btn = ui
                         .add(
                             egui::Button::new(
-                                RichText::new(" Controls ")
-                                    .font(FontId::monospace(12.0))
-                                    .color(COLOR_PATTERN_CURSOR_TEXT),
+                                RichText::new(if app.follow_playback {
+                                    "Follow"
+                                } else {
+                                    "Follow"
+                                })
+                                .font(FontId::monospace(12.0))
+                                .color(follow_color),
                             )
-                            .fill(COLOR_LAYOUT_BORDER)
-                            .stroke(Stroke::new(1.0, COLOR_LAYOUT_BORDER_ACTIVE)),
+                            .fill(COLOR_LAYOUT_BG_PANEL)
+                            .stroke(Stroke::new(1.0, follow_color)),
                         )
                         .on_hover_cursor(egui::CursorIcon::PointingHand);
-
-                    ctrl_btn.surrender_focus();
-                    if ctrl_btn.clicked() {
-                        app.show_controls_modal = !app.show_controls_modal;
-                    }
-
-                    ui.add_space(4.0);
-
-                    let open_btn = ui
-                        .add(
-                            egui::Button::new(
-                                RichText::new(" Open Module ")
-                                    .font(FontId::monospace(12.0))
-                                    .color(COLOR_PATTERN_CURSOR_TEXT),
-                            )
-                            .fill(COLOR_LAYOUT_BORDER)
-                            .stroke(Stroke::new(1.0, COLOR_LAYOUT_BORDER_ACTIVE)),
-                        )
-                        .on_hover_cursor(egui::CursorIcon::PointingHand);
-
-                    open_btn.surrender_focus();
-                    if open_btn.clicked() {
-                        app.open_module_file();
+                    btn.surrender_focus();
+                    if btn.clicked() {
+                        app.follow_playback = !app.follow_playback;
                     }
                 });
             });
         });
 }
 
-fn draw_volume_control(ui: &mut egui::Ui, app: &mut App) {
+fn draw_field(ui: &mut egui::Ui, label: &str) {
     ui.label(
-        RichText::new("VOL")
+        RichText::new(label)
             .font(FontId::monospace(10.0))
             .color(COLOR_TEXT_DIM),
     );
+}
 
-    let slider_response = ui
-        .add(
-            egui::Slider::new(&mut app.project.master_volume_db, -60.0..=6.0)
-                .step_by(0.1)
-                .clamping(egui::SliderClamping::Always),
-        )
-        .on_hover_cursor(egui::CursorIcon::PointingHand);
-
-    slider_response.surrender_focus();
-    if slider_response.double_clicked() {
-        app.project.master_volume_db = 0.0;
-    }
-
-    ui.add_space(4.0);
-
-    let meter_width = 80.0;
-    let meter_height = 13.0;
-    let (rect, _response) = ui.allocate_exact_size(
-        egui::Vec2::new(meter_width, meter_height),
-        egui::Sense::hover(),
-    );
+fn draw_peak_meter(ui: &mut egui::Ui, app: &App) {
+    let meter_width = 60.0;
+    let meter_height = 10.0;
+    let (rect, _) =
+        ui.allocate_exact_size(Vec2::new(meter_width, meter_height), egui::Sense::hover());
 
     let painter = ui.painter();
-
     painter.rect_filled(rect, 2.0, egui::Color32::from_rgb(20, 18, 32));
 
     let peak = app.display_peak;
     if peak > 0.001 {
         let peak_db = 20.0 * peak.log10();
-        let meter_min_db = -60.0_f32;
-        let meter_max_db = 6.0_f32;
-        let normalized = ((peak_db - meter_min_db) / (meter_max_db - meter_min_db)).clamp(0.0, 1.0);
-
-        let fill_width = rect.width() * normalized;
+        let min_db = -60.0_f32;
+        let max_db = 6.0_f32;
+        let norm = ((peak_db - min_db) / (max_db - min_db)).clamp(0.0, 1.0);
         let fill_rect =
-            egui::Rect::from_min_size(rect.min, egui::Vec2::new(fill_width, meter_height));
+            egui::Rect::from_min_size(rect.min, Vec2::new(rect.width() * norm, meter_height));
 
         let color = if peak_db < -12.0 {
             egui::Color32::from_rgb(60, 190, 80)
@@ -292,14 +327,13 @@ fn draw_volume_control(ui: &mut egui::Ui, app: &mut App) {
 
         painter.rect_filled(fill_rect, 2.0, color);
 
-        let zero_db_x = rect.width().mul_add(
-            (0.0 - meter_min_db) / (meter_max_db - meter_min_db),
-            rect.min.x,
-        );
+        let zero_x = rect
+            .width()
+            .mul_add((0.0 - min_db) / (max_db - min_db), rect.min.x);
         painter.line_segment(
             [
-                egui::Pos2::new(zero_db_x, rect.min.y),
-                egui::Pos2::new(zero_db_x, rect.max.y),
+                egui::Pos2::new(zero_x, rect.min.y),
+                egui::Pos2::new(zero_x, rect.max.y),
             ],
             Stroke::new(
                 1.0,

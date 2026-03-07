@@ -5,7 +5,7 @@ use crate::project::{SampleData, VolEnvelope};
 
 use super::widgets::settings_row;
 use super::{
-    COLOR_LAYOUT_BG_DARK, COLOR_LAYOUT_BG_PANEL, COLOR_MODE_SETTINGS, COLOR_PATTERN_CURSOR_BG,
+    COLOR_LAYOUT_BG_DARK, COLOR_LAYOUT_BG_PANEL, COLOR_ACCENT, COLOR_PATTERN_CURSOR_BG,
     COLOR_PATTERN_CURSOR_TEXT, COLOR_TEXT, COLOR_TEXT_DIM,
 };
 
@@ -23,7 +23,7 @@ pub fn draw_instrument(ui: &mut egui::Ui, app: &mut App) {
             ui.label(
                 RichText::new("Instrument")
                     .font(FontId::monospace(15.0))
-                    .color(COLOR_MODE_SETTINGS)
+                    .color(COLOR_ACCENT)
                     .strong(),
             );
             ui.add_space(2.0);
@@ -267,7 +267,7 @@ fn draw_waveform_preview(ui: &mut egui::Ui, samples: &[i16]) {
         })
         .collect();
 
-    let waveform_color = super::COLOR_MODE_SETTINGS;
+    let waveform_color = super::COLOR_ACCENT;
     for window in points.windows(2) {
         painter.line_segment([window[0], window[1]], Stroke::new(1.0, waveform_color));
     }
@@ -386,7 +386,7 @@ fn draw_envelope_preview(ui: &mut egui::Ui, env: &VolEnvelope) {
         }
     }
 
-    let line_color = COLOR_MODE_SETTINGS;
+    let line_color = COLOR_ACCENT;
     let points_pos: Vec<Pos2> = env.points.iter().map(|&(t, v)| to_pos(t, v)).collect();
     for window in points_pos.windows(2) {
         painter.line_segment([window[0], window[1]], Stroke::new(1.5, line_color));
@@ -414,7 +414,7 @@ pub fn draw_instrument_list(ui: &mut egui::Ui, app: &mut App) {
             ui.label(
                 RichText::new("Instruments")
                     .font(FontId::monospace(15.0))
-                    .color(COLOR_MODE_SETTINGS)
+                    .color(COLOR_ACCENT)
                     .strong(),
             );
             ui.add_space(2.0);

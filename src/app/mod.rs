@@ -16,7 +16,6 @@ use crate::project::Project;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     Edit,
-    Settings,
     SynthEdit,
 }
 
@@ -167,13 +166,15 @@ impl SynthSettingsField {
                         *point_idx = env.points.len() - 1;
                     }
                     if let Some(sp) = env.sustain_point
-                        && sp >= env.points.len() {
-                            env.sustain_point = None;
-                        }
+                        && sp >= env.points.len()
+                    {
+                        env.sustain_point = None;
+                    }
                     if let Some((ls, le)) = env.loop_range
-                        && (ls >= env.points.len() || le >= env.points.len()) {
-                            env.loop_range = None;
-                        }
+                        && (ls >= env.points.len() || le >= env.points.len())
+                    {
+                        env.loop_range = None;
+                    }
                 }
             }
             Self::EnvPoint => {
@@ -248,91 +249,6 @@ impl SynthSettingsField {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SettingsField {
-    Scale,
-    Bpm,
-    PatternLength,
-    Subdivision,
-    Step,
-    Transpose,
-}
-
-impl SettingsField {
-    pub const fn next(self) -> Self {
-        match self {
-            Self::Scale => Self::Bpm,
-            Self::Bpm => Self::Subdivision,
-            Self::Subdivision => Self::Step,
-            Self::Step => Self::PatternLength,
-            Self::PatternLength => Self::Transpose,
-            Self::Transpose => Self::Scale,
-        }
-    }
-
-    pub const fn prev(self) -> Self {
-        match self {
-            Self::Scale => Self::Transpose,
-            Self::Bpm => Self::Scale,
-            Self::Subdivision => Self::Bpm,
-            Self::Step => Self::Subdivision,
-            Self::PatternLength => Self::Step,
-            Self::Transpose => Self::PatternLength,
-        }
-    }
-
-    pub fn adjust(self, project: &mut crate::project::Project, _cursor_row: &mut usize) {
-        match self {
-            Self::Subdivision => {
-                project.subdivision = (project.subdivision + 1).min(64);
-            }
-            Self::Step => {
-                project.step = (project.step + 1).min(64);
-            }
-            Self::Bpm => {
-                project.bpm = (project.bpm + 1).min(666);
-            }
-            Self::PatternLength => {
-                let new_len = (project.current_pattern().rows + 1).min(128);
-                project.current_pattern_mut().resize(new_len);
-            }
-            Self::Scale => {
-                project.scale_index = project.scale_index.next();
-            }
-            Self::Transpose => {
-                project.transpose = (project.transpose + 1).min(12);
-            }
-        }
-    }
-
-    pub fn adjust_down(self, project: &mut crate::project::Project, cursor_row: &mut usize) {
-        match self {
-            Self::Subdivision => {
-                project.subdivision = project.subdivision.saturating_sub(1).max(2);
-            }
-            Self::Step => {
-                project.step = project.step.saturating_sub(1).max(1);
-            }
-            Self::Bpm => {
-                project.bpm = project.bpm.saturating_sub(1).max(20);
-            }
-            Self::PatternLength => {
-                let new_len = project.current_pattern().rows.saturating_sub(1).max(1);
-                project.current_pattern_mut().resize(new_len);
-                if *cursor_row >= project.current_pattern().rows {
-                    *cursor_row = project.current_pattern().rows - 1;
-                }
-            }
-            Self::Scale => {
-                project.scale_index = project.scale_index.prev();
-            }
-            Self::Transpose => {
-                project.transpose = (project.transpose - 1).max(-12);
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SubColumn {
     Note,
     Instrument,
@@ -376,7 +292,6 @@ pub struct App {
     pub peak_level: Arc<AtomicU32>,
     pub playback_row: Arc<AtomicUsize>,
     pub display_peak: f32,
-    pub settings_field: SettingsField,
     pub synth_field: SynthSettingsField,
     pub current_instrument: usize,
     pub status_message: Option<String>,
@@ -417,7 +332,6 @@ impl App {
             peak_level,
             playback_row,
             display_peak: 0.0,
-            settings_field: SettingsField::Scale,
             synth_field: SynthSettingsField::Instrument,
             current_instrument: 0,
             status_message: None,

@@ -5,11 +5,11 @@ use crate::app::scale::{Scale, map_key_index_to_note};
 use crate::project::Note;
 use crate::project::{Cell, Effect, SampleData};
 
-use super::{App, ClipboardData, Mode, SettingsField, SubColumn, SynthSettingsField};
+use super::{App, ClipboardData, Mode, SubColumn, SynthSettingsField};
 
 impl App {
     pub fn handle_input(&mut self, ctx: &egui::Context) -> bool {
-        if self.text_editing {
+        if self.text_editing || ctx.wants_keyboard_input() {
             return false;
         }
         ctx.input(|input| {
@@ -37,10 +37,6 @@ impl App {
 
             match self.mode {
                 Mode::Edit => self.handle_edit_input(input, &actions),
-                Mode::Settings => {
-                    self.handle_settings_input(&actions);
-                    false
-                }
                 Mode::SynthEdit => {
                     self.handle_synth_input(&actions);
                     false
@@ -54,13 +50,6 @@ impl App {
             self.clear_selection();
             self.mode = Mode::SynthEdit;
             self.synth_field = SynthSettingsField::Instrument;
-            return false;
-        }
-
-        if actions.contains(&Action::SwitchToSettings) {
-            self.clear_selection();
-            self.mode = Mode::Settings;
-            self.settings_field = SettingsField::Scale;
             return false;
         }
 
@@ -1102,42 +1091,17 @@ impl App {
         false
     }
 
-    fn handle_settings_input(&mut self, actions: &[Action]) {
-        if self.handle_mode_switch(actions) {
-            return;
-        }
-
-        if actions.contains(&Action::SwitchToSynth) {
-            self.mode = Mode::SynthEdit;
-            self.synth_field = SynthSettingsField::Instrument;
-        } else if actions.contains(&Action::SwitchToSettings) {
-        } else if actions.contains(&Action::SettingsDown) {
-            self.settings_field = self.settings_field.next();
-        } else if actions.contains(&Action::SettingsUp) {
-            self.settings_field = self.settings_field.prev();
-        } else if actions.contains(&Action::SettingsIncrease) {
-            self.settings_field
-                .adjust(&mut self.project, &mut self.cursor.row);
-        } else if actions.contains(&Action::SettingsDecrease) {
-            self.settings_field
-                .adjust_down(&mut self.project, &mut self.cursor.row);
-        }
-    }
-
     fn handle_synth_input(&mut self, actions: &[Action]) {
         if self.handle_mode_switch(actions) {
             return;
         }
 
         if actions.contains(&Action::SwitchToSynth) {
-        } else if actions.contains(&Action::SwitchToSettings) {
-            self.mode = Mode::Settings;
-            self.settings_field = SettingsField::Scale;
-        } else if actions.contains(&Action::SettingsDown) {
+        } else if actions.contains(&Action::SynthDown) {
             self.synth_field = self.synth_field.next();
-        } else if actions.contains(&Action::SettingsUp) {
+        } else if actions.contains(&Action::SynthUp) {
             self.synth_field = self.synth_field.prev();
-        } else if actions.contains(&Action::SettingsIncrease) {
+        } else if actions.contains(&Action::SynthIncrease) {
             if self.synth_field == SynthSettingsField::Instrument {
                 self.current_instrument =
                     (self.current_instrument + 1) % self.project.instruments.len();
@@ -1163,7 +1127,7 @@ impl App {
                 self.synth_field
                     .adjust(&mut self.project.instruments[idx], 1);
             }
-        } else if actions.contains(&Action::SettingsDecrease) {
+        } else if actions.contains(&Action::SynthDecrease) {
             if self.synth_field == SynthSettingsField::Instrument {
                 if self.current_instrument == 0 {
                     self.current_instrument = self.project.instruments.len() - 1;
