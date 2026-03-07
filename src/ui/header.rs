@@ -133,20 +133,8 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                     }
                 }
 
-                draw_field(ui, "STEP");
-                let r = ui
-                    .add(
-                        egui::DragValue::new(&mut app.project.step)
-                            .range(1..=64)
-                            .speed(0.2),
-                    )
-                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
-                if r.has_focus() {
-                    app.text_editing = true;
-                }
-
                 ui.add_space(24.0);
-                draw_field(ui, "INPUT");
+                draw_field(ui, "KEY SHIFT");
                 let r = ui
                     .add(
                         egui::DragValue::new(&mut app.project.transpose)
@@ -186,6 +174,18 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                             );
                         }
                     });
+
+                draw_field(ui, "STEP");
+                let r = ui
+                    .add(
+                        egui::DragValue::new(&mut app.project.step)
+                            .range(1..=64)
+                            .speed(0.2),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+                if r.has_focus() {
+                    app.text_editing = true;
+                }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let btn = ui
