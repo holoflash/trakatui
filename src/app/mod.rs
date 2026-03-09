@@ -85,6 +85,7 @@ pub struct App {
     pub project_path: Option<std::path::PathBuf>,
     pub dirty: bool,
     pub show_quit_confirm: bool,
+    pub show_new_confirm: bool,
 }
 
 impl App {
@@ -132,8 +133,9 @@ impl App {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             project_path: None,
-            dirty: true,
+            dirty: false,
             show_quit_confirm: false,
+            show_new_confirm: false,
         }
     }
 
@@ -279,6 +281,25 @@ impl App {
         }
     }
 
+    pub fn do_new_project(&mut self) {
+        if self.dirty {
+            self.show_new_confirm = true;
+        } else {
+            self.reset_project();
+        }
+    }
+
+    pub fn reset_project(&mut self) {
+        self.project = Project::new();
+        self.project_path = None;
+        self.dirty = false;
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.cursor.channel = 0;
+        self.cursor.row = 0;
+        self.current_instrument = 0;
+        self.envelope_point_idx = 0;
+    }
     pub fn project_file_name(&self) -> String {
         self.project_path
             .as_ref()
@@ -289,7 +310,12 @@ impl App {
 
     pub fn project_name(&self) -> String {
         let name = self.project_file_name();
-        let status = if self.dirty { "unsaved" } else { "saved" };
-        format!("{name} [{status}]")
+        if self.dirty {
+            format!("{name} [unsaved]")
+        } else if self.project_path.is_some() {
+            format!("{name} [saved]")
+        } else {
+            name
+        }
     }
 }

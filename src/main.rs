@@ -97,6 +97,37 @@ impl eframe::App for PsikatApp {
                 });
         }
 
+        if self.app.show_new_confirm {
+            egui::Window::new("New Project")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.label(format!(
+                        "Do you want to save the changes you made to \"{}\"?",
+                        self.app.project_file_name()
+                    ));
+                    ui.label("Your changes will be lost if you don't save them.");
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Save").clicked() {
+                            self.app.show_new_confirm = false;
+                            self.app.do_quick_save();
+                            if !self.app.dirty {
+                                self.app.reset_project();
+                            }
+                        }
+                        if ui.button("Don't Save").clicked() {
+                            self.app.show_new_confirm = false;
+                            self.app.reset_project();
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.app.show_new_confirm = false;
+                        }
+                    });
+                });
+        }
+
         if self.app.playback.playing
             || self
                 .app

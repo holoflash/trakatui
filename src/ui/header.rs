@@ -68,6 +68,16 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                         if ui
                             .selectable_label(
                                 false,
+                                RichText::new("New Project").color(COLOR_TEXT_ACTIVE),
+                            )
+                            .clicked()
+                        {
+                            ui.close();
+                            app.do_new_project();
+                        }
+                        if ui
+                            .selectable_label(
+                                false,
                                 RichText::new("Open Project").color(COLOR_TEXT_ACTIVE),
                             )
                             .clicked()

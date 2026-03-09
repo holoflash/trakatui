@@ -18,7 +18,7 @@ pub fn save(project: &Project, path: &Path) -> Result<(), String> {
 
     buf.extend_from_slice(MAGIC);
     buf.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
-    buf.extend_from_slice(&0u16.to_le_bytes()); // flags reserved
+    buf.extend_from_slice(&0u16.to_le_bytes());
 
     let encoded =
         rmp_serde::to_vec(project).map_err(|e| format!("Failed to encode project: {e}"))?;
