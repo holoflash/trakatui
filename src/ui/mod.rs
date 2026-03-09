@@ -5,7 +5,6 @@ mod instrument;
 mod order_bar;
 mod pattern;
 mod sidebar;
-mod widgets;
 
 use eframe::egui::{self, Color32};
 

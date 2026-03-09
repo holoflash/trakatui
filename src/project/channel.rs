@@ -159,16 +159,16 @@ impl Instrument {
     }
 
     pub fn defaults() -> Vec<Self> {
-        vec![Self::new_empty("Instrument 00")]
+        vec![Self::new_empty("Instrument 01")]
     }
 
     pub fn new_empty(name: &str) -> Self {
         Self {
             name: name.into(),
-            waveform: WaveformKind::Sample,
+            waveform: WaveformKind::Square,
             vol_envelope: VolEnvelope::default_preset(),
-            sample_data: SampleData::silent(),
-            default_volume: 0.25,
+            sample_data: SampleData::square(),
+            default_volume: 0.5,
             samples: Vec::new(),
             note_to_sample: Vec::new(),
             vol_fadeout: 0,

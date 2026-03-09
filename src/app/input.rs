@@ -884,6 +884,14 @@ impl App {
                         self.cursor.row,
                         Some(self.current_instrument as u8),
                     );
+                    let inst_vol = &self.project.instruments
+                        [self.current_instrument % self.project.instruments.len()];
+                    let vol_hex = (inst_vol.default_volume * 255.0).round() as u8;
+                    self.project.current_pattern_mut().set_volume(
+                        self.cursor.channel,
+                        self.cursor.row,
+                        Some(vol_hex),
+                    );
                     if !self.playback.playing {
                         self.audio.preview_note(
                             note.frequency(),

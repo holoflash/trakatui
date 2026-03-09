@@ -325,7 +325,7 @@ fn draw_body_row(row: &mut egui_extras::TableRow<'_, '_>, app: &mut App, channel
         fill_cell(ui, row_bg);
         ui.add_space(CELL_PAD);
         ui.label(
-            RichText::new(format!("{:02}", row_idx))
+            RichText::new(format!("{:02}", row_idx + 1))
                 .font(FONT)
                 .color(row_text_color),
         );

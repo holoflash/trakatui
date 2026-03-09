@@ -67,7 +67,8 @@ pub fn draw_instrument(ui: &mut egui::Ui, app: &mut App) {
             let inst_idx = app.current_instrument;
             let selected_label = format!(
                 "{:02X}: {}",
-                inst_idx, app.project.instruments[inst_idx].name
+                inst_idx + 1,
+                app.project.instruments[inst_idx].name
             );
             ui.horizontal(|ui| {
                 egui::ComboBox::from_id_salt("instrument_combo")
@@ -75,7 +76,7 @@ pub fn draw_instrument(ui: &mut egui::Ui, app: &mut App) {
                     .width(ui.available_width() - 4.0)
                     .show_ui(ui, |ui| {
                         for (i, inst) in app.project.instruments.iter().enumerate() {
-                            let label = format!("{:02X}: {}", i, inst.name);
+                            let label = format!("{:02X}: {}", i + 1, inst.name);
                             let color = if i == inst_idx {
                                 COLOR_ACCENT
                             } else {
@@ -95,7 +96,7 @@ pub fn draw_instrument(ui: &mut egui::Ui, app: &mut App) {
                         ui.separator();
                         if ui.button("+ Add new").clicked() {
                             let idx = app.project.instruments.len();
-                            let name = format!("Instrument {:02X}", idx);
+                            let name = format!("Instrument {:02X}", idx + 1);
                             app.project
                                 .instruments
                                 .push(crate::project::channel::Instrument::new_empty(&name));
@@ -143,6 +144,29 @@ pub fn draw_instrument(ui: &mut egui::Ui, app: &mut App) {
                 .inner;
             app.text_editing = te_has_focus;
             app.project.instruments[inst_idx].name = inst_name;
+            ui.add_space(4.0);
+
+            ui.horizontal(|ui| {
+                field_label(ui, "VOLUME");
+                let mut vol_hex =
+                    (app.project.instruments[inst_idx].default_volume * 255.0).round() as u32;
+                let r = ui
+                    .add(
+                        egui::DragValue::new(&mut vol_hex)
+                            .range(0..=255)
+                            .speed(0.2)
+                            .custom_formatter(|v, _| format!("{:02X}", v as u32))
+                            .custom_parser(|s| {
+                                u32::from_str_radix(s.trim(), 16).ok().map(|v| v as f64)
+                            }),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+                if r.has_focus() {
+                    app.text_editing = true;
+                }
+                app.project.instruments[inst_idx].default_volume =
+                    (vol_hex as f32 / 255.0).clamp(0.0, 1.0);
+            });
             ui.add_space(4.0);
 
             ui.horizontal(|ui| {
