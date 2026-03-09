@@ -79,6 +79,12 @@ pub struct App {
     pub text_editing: bool,
     pub channel_scopes: Arc<Vec<ScopeBuffer>>,
     pub display_scopes: Vec<[f32; SCOPE_SIZE]>,
+
+    pub undo_stack: Vec<Project>,
+    pub redo_stack: Vec<Project>,
+    pub project_path: Option<std::path::PathBuf>,
+    pub dirty: bool,
+    pub show_quit_confirm: bool,
 }
 
 impl App {
@@ -122,6 +128,12 @@ impl App {
             text_editing: false,
             channel_scopes,
             display_scopes: vec![[0.0; SCOPE_SIZE]; 32],
+
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            project_path: None,
+            dirty: true,
+            show_quit_confirm: false,
         }
     }
 
@@ -186,5 +198,98 @@ impl App {
             self.cursor.channel = channel;
             self.cursor.row = row;
         }
+    }
+
+    const MAX_UNDO: usize = 100;
+
+    pub fn save_undo_snapshot(&mut self) {
+        self.undo_stack.push(self.project.clone());
+        if self.undo_stack.len() > Self::MAX_UNDO {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
+        self.dirty = true;
+    }
+
+    pub fn undo(&mut self) {
+        if let Some(prev) = self.undo_stack.pop() {
+            self.redo_stack.push(self.project.clone());
+            self.project = prev;
+        }
+    }
+
+    pub fn redo(&mut self) {
+        if let Some(next) = self.redo_stack.pop() {
+            self.undo_stack.push(self.project.clone());
+            self.project = next;
+        }
+    }
+
+    pub fn do_quick_save(&mut self) {
+        if let Some(ref path) = self.project_path {
+            let _ = crate::project::file::save(&self.project, path);
+            self.dirty = false;
+        } else {
+            self.do_save_as();
+        }
+    }
+
+    pub fn do_save_as(&mut self) {
+        let mut dialog = rfd::FileDialog::new()
+            .add_filter("Psikat Project", &["psikat"])
+            .set_file_name(self.project_name())
+            .set_title("Save Project")
+            .set_can_create_directories(true);
+        if let Some(home) = dirs::home_dir() {
+            dialog = dialog.set_directory(home);
+        }
+        if let Some(mut path) = dialog.save_file() {
+            if path.extension().is_none() {
+                path.set_extension("psikat");
+            }
+            let _ = crate::project::file::save(&self.project, &path);
+            self.project_path = Some(path);
+            self.dirty = false;
+        }
+    }
+
+    pub fn do_open(&mut self) {
+        let mut dialog = rfd::FileDialog::new()
+            .add_filter("Psikat Project", &["psikat"])
+            .set_title("Open Project");
+        if let Some(home) = dirs::home_dir() {
+            dialog = dialog.set_directory(home);
+        }
+        if let Some(path) = dialog.pick_file() {
+            match crate::project::file::load(&path) {
+                Ok(project) => {
+                    self.save_undo_snapshot();
+                    self.project = project;
+                    self.project_path = Some(path);
+                    self.dirty = false;
+                    self.cursor.channel = 0;
+                    self.cursor.row = 0;
+                    self.current_instrument = 0;
+                    self.envelope_point_idx = 0;
+                }
+                Err(e) => {
+                    eprintln!("Failed to open project: {e}");
+                }
+            }
+        }
+    }
+
+    pub fn project_file_name(&self) -> String {
+        self.project_path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "untitled.psikat".into())
+    }
+
+    pub fn project_name(&self) -> String {
+        let name = self.project_file_name();
+        let status = if self.dirty { "unsaved" } else { "saved" };
+        format!("{name} [{status}]")
     }
 }

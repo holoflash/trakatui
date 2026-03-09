@@ -14,6 +14,11 @@ const fn clamp_to_u8(v: f32) -> u8 {
 }
 
 pub fn draw_header(ctx: &egui::Context, app: &mut App) {
+    ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
+        "psikat — {}",
+        app.project_name()
+    )));
+
     let raw_peak = f32::from_bits(app.peak_level.swap(0, Ordering::Relaxed));
     let target = raw_peak.min(1.5);
     if target > app.display_peak {
@@ -38,7 +43,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                 ui.add_space(4.0);
                 let logo_btn = ui
                     .add(
-                        egui::ImageButton::new(
+                        egui::Button::image(
                             egui::Image::new(egui::include_image!("../../assets/psikat.png"))
                                 .fit_to_exact_size(Vec2::new(48.0, 48.0))
                                 .texture_options(egui::TextureOptions::NEAREST),
@@ -63,13 +68,39 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                         if ui
                             .selectable_label(
                                 false,
-                                RichText::new("Open Project (TBD)").color(COLOR_TEXT_ACTIVE),
+                                RichText::new("Open Project").color(COLOR_TEXT_ACTIVE),
                             )
                             .clicked()
                         {
-                            ui.close_menu();
-                            app.open_module_file();
+                            ui.close();
+                            app.do_open();
                         }
+                        ui.separator();
+
+                        let has_path = app.project_path.is_some();
+                        let save_color = if has_path {
+                            COLOR_TEXT_ACTIVE
+                        } else {
+                            COLOR_TEXT_DIM
+                        };
+                        let save_resp =
+                            ui.selectable_label(false, RichText::new("Save").color(save_color));
+                        if save_resp.clicked() && has_path {
+                            ui.close();
+                            app.do_quick_save();
+                        }
+
+                        if ui
+                            .selectable_label(
+                                false,
+                                RichText::new("Save Project").color(COLOR_TEXT_ACTIVE),
+                            )
+                            .clicked()
+                        {
+                            ui.close();
+                            app.do_save_as();
+                        }
+                        ui.separator();
                         if ui
                             .selectable_label(
                                 false,
@@ -77,7 +108,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                             )
                             .clicked()
                         {
-                            ui.close_menu();
+                            ui.close();
                             app.do_export();
                         }
                         ui.separator();
@@ -85,7 +116,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                             .selectable_label(false, RichText::new("Help").color(COLOR_TEXT_ACTIVE))
                             .clicked()
                         {
-                            ui.close_menu();
+                            ui.close();
                             app.show_controls_modal = !app.show_controls_modal;
                         }
                     });

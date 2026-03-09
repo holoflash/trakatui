@@ -1,4 +1,6 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Effect {
     pub kind: u8,
     pub param: u8,
@@ -27,7 +29,7 @@ pub fn instrument_display(inst: Option<u8>) -> String {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Note {
     pub pitch: u8,
 }
@@ -53,13 +55,14 @@ impl Note {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Cell {
     Empty,
     NoteOn(Note),
     NoteOff,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Pattern {
     pub channels: usize,
     pub rows: usize,

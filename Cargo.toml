@@ -12,14 +12,16 @@ opt-level = 1
 opt-level = 2
 
 [dependencies]
-eframe = "0.31"
-egui_extras = { version = "0.31", features = ["image"] }
+eframe = "0.33.3"
+egui_extras = { version = "0.33.3", features = ["image"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 fastrand = "2.3.0"
 hound = "3.5.1"
 dirs = "6"
 rfd = "0.17"
-rodio = "0.22.1"
+rodio = "0.22.2"
+serde = { version = "1", features = ["derive", "rc"] }
+rmp-serde = "1"
 
 [lints.clippy]
 perf = "warn"

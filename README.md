@@ -36,13 +36,10 @@ A lightweight cross-platform music tracker built with Rust.
 - Musical scales for input transposition
 - Keyboard shortcut reference
 
-**TODO**
+**.psikat format**
 
-_In order of importance_
-
-- Undo/Redo
-- Native project save/load
-  ...and many more
+- Save/load native .psikat project files
+- Undo/redo (100 steps)
 
 > _All features are subject to change without notice before version 1.0.0_
 

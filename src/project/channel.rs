@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
+
 use super::sample::SampleData;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WaveformKind {
     Sample,
     Sine,
@@ -45,7 +47,7 @@ impl WaveformKind {
     ];
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VolEnvelope {
     pub points: Vec<(u16, u16)>,
     pub sustain_point: Option<usize>,
@@ -128,7 +130,7 @@ impl VolEnvelope {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Instrument {
     pub name: String,
     pub waveform: WaveformKind,

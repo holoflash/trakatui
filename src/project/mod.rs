@@ -1,4 +1,5 @@
 pub mod channel;
+pub mod file;
 pub mod pattern;
 pub mod sample;
 
@@ -10,6 +11,7 @@ pub use sample::SampleData;
 
 use crate::app::scale::ScaleIndex;
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Project {
     pub patterns: Vec<Pattern>,
     pub order: Vec<usize>,

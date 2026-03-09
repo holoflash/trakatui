@@ -136,7 +136,7 @@ pub fn draw_order_bar(ctx: &egui::Context, app: &mut App) {
                                     .clicked()
                                 {
                                     actions.push(OrderAction::SetPattern(i, p));
-                                    ui.close_menu();
+                                    ui.close();
                                 }
                             }
                         });

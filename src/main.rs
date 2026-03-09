@@ -47,14 +47,55 @@ impl PsikatApp {
 
 impl eframe::App for PsikatApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if ctx.input(|i| i.viewport().close_requested()) && self.app.dirty {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.app.show_quit_confirm = true;
+        }
+
         let should_close = self.app.handle_input(ctx);
         if should_close {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            if self.app.dirty {
+                self.app.show_quit_confirm = true;
+            } else {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
         }
 
         self.app.tick();
 
         ui::draw(ctx, &mut self.app);
+
+        if self.app.show_quit_confirm {
+            egui::Window::new("Unsaved Changes")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.label(format!(
+                        "Do you want to save the changes you made to \"{}\"?",
+                        self.app.project_file_name()
+                    ));
+                    ui.label("Your changes will be lost if you don't save them.");
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Save").clicked() {
+                            self.app.show_quit_confirm = false;
+                            self.app.do_quick_save();
+                            if !self.app.dirty {
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            }
+                        }
+                        if ui.button("Don't Save").clicked() {
+                            self.app.show_quit_confirm = false;
+                            self.app.dirty = false;
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.app.show_quit_confirm = false;
+                        }
+                    });
+                });
+        }
 
         if self.app.playback.playing
             || self

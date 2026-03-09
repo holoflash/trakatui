@@ -4,20 +4,21 @@ use std::path::Path;
 use std::sync::Arc;
 
 use rodio::Source;
+use serde::{Deserialize, Serialize};
 
 const MAX_SAMPLE_LEN: usize = 131_072;
 const INV_I16_MAX: f32 = 1.0 / i16::MAX as f32;
 const WAVE_LEN: usize = 256;
 const WAVE_RATE: u32 = 440 * WAVE_LEN as u32;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LoopType {
     None,
     Forward,
     PingPong,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SampleData {
     pub samples_i16: Vec<i16>,
     pub samples_f32: Vec<f32>,

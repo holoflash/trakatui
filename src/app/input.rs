@@ -13,6 +13,26 @@ impl App {
             return false;
         }
         ctx.input(|input| {
+            let cmd = input.modifiers.command;
+            let shift = input.modifiers.shift;
+
+            if cmd && !shift && input.key_pressed(Key::Z) {
+                self.undo();
+                return false;
+            }
+            if cmd && shift && input.key_pressed(Key::Z) {
+                self.redo();
+                return false;
+            }
+            if cmd && shift && input.key_pressed(Key::S) {
+                self.do_save_as();
+                return false;
+            }
+            if cmd && !shift && input.key_pressed(Key::S) {
+                self.do_quick_save();
+                return false;
+            }
+
             let actions = self.keybindings.active_actions(input);
 
             if actions.contains(&Action::PlayStop) {
@@ -51,6 +71,7 @@ impl App {
         }
 
         if actions.contains(&Action::Delete) {
+            self.save_undo_snapshot();
             self.handle_delete();
             return false;
         }
@@ -64,6 +85,7 @@ impl App {
                 .any(|e| matches!(e, egui::Event::Paste(_)));
 
             if has_cut {
+                self.save_undo_snapshot();
                 self.handle_copy();
                 self.handle_delete();
                 return false;
@@ -73,12 +95,14 @@ impl App {
                 return false;
             }
             if has_paste {
+                self.save_undo_snapshot();
                 self.handle_paste();
                 return false;
             }
         }
 
         if actions.contains(&Action::NoteOff) && self.cursor.sub_column == SubColumn::Note {
+            self.save_undo_snapshot();
             self.handle_note_off();
             return false;
         }
@@ -88,11 +112,13 @@ impl App {
         }
 
         if actions.contains(&Action::FillAscending) {
+            self.save_undo_snapshot();
             self.handle_fill(true);
             return false;
         }
 
         if actions.contains(&Action::FillDescending) {
+            self.save_undo_snapshot();
             self.handle_fill(false);
             return false;
         }
@@ -123,10 +149,13 @@ impl App {
         }
 
         if self.cursor.sub_column == SubColumn::Effect {
+            self.save_undo_snapshot();
             self.handle_effect_keys(input);
         } else if self.cursor.sub_column == SubColumn::Volume {
+            self.save_undo_snapshot();
             self.handle_volume_keys(input);
         } else if self.cursor.sub_column == SubColumn::Instrument {
+            self.save_undo_snapshot();
             self.handle_instrument_keys(input);
         } else {
             self.handle_note_keys(input);
@@ -740,6 +769,7 @@ impl App {
         };
 
         if can_transpose {
+            self.save_undo_snapshot();
             for ch in min_ch..=max_ch {
                 for row in min_row..=max_row {
                     if let Cell::NoteOn(note) = self.project.current_pattern().get(ch, row) {
@@ -870,6 +900,7 @@ impl App {
         ];
         for &k in &note_keys {
             if input.key_pressed(k) {
+                self.save_undo_snapshot();
                 let scale = self.project.scale_index.scale();
                 if let Some(note) =
                     key_to_note(k, self.cursor.octave, scale, self.project.transpose)
@@ -1077,8 +1108,6 @@ impl App {
             }
         }
     }
-
-    pub fn open_module_file(&mut self) {}
 }
 
 pub fn key_to_note(key: Key, octave: u8, scale: &Scale, transpose: i8) -> Option<Note> {
