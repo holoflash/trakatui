@@ -130,6 +130,8 @@ struct Channel {
     base_frequency: f32,
     current_instrument: usize,
     current_effect: Option<Effect>,
+    last_effect: Option<Effect>,
+    last_volume: Option<u8>,
 
     porta_target: f32,
     tone_porta_speed: u8,
@@ -187,6 +189,8 @@ impl Channel {
             base_frequency: 0.0,
             current_instrument: 0,
             current_effect: None,
+            last_effect: None,
+            last_volume: None,
             porta_target: 0.0,
             tone_porta_speed: 0,
             vibrato_speed: 0,
@@ -751,10 +755,30 @@ impl TrackerSource {
                 continue;
             }
             let inst = &settings.instruments[ci];
-            let effect = pattern.effects[ch_idx][self.current_row];
-            let volume = pattern.volumes[ch_idx][self.current_row];
+            let raw_effect = pattern.effects[ch_idx][self.current_row];
+            let raw_volume = pattern.volumes[ch_idx][self.current_row];
             let cell = pattern.data[ch_idx][self.current_row];
             let channel = &mut self.channels[ch_idx];
+
+            let effect = match raw_effect {
+                Some(e) if e.kind == 0 && e.param == 0 => {
+                    channel.last_effect = None;
+                    None
+                }
+                Some(e) => {
+                    channel.last_effect = Some(e);
+                    Some(e)
+                }
+                None => channel.last_effect,
+            };
+
+            let volume = match raw_volume {
+                Some(v) => {
+                    channel.last_volume = Some(v);
+                    Some(v)
+                }
+                None => channel.last_volume,
+            };
 
             let effect = effect.map(|e| {
                 let mut e = e;
