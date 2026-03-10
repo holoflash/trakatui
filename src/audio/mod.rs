@@ -94,8 +94,11 @@ impl AudioEngine {
         );
         let monitored = PeakMonitor::new(source, peak_level.clone());
 
-        let mut device_sink =
-            DeviceSinkBuilder::open_default_sink().expect("Failed to open audio output");
+        let mut device_sink = DeviceSinkBuilder::from_default_device()
+            .expect("Failed to open audio output")
+            .with_buffer_size(rodio::cpal::BufferSize::Fixed(128))
+            .open_sink_or_fallback()
+            .expect("Failed to open audio output");
         device_sink.log_on_drop(false);
         device_sink.mixer().add(monitored);
 

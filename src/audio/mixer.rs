@@ -16,6 +16,15 @@ const TICKS_PER_ROW: u16 = 6;
 pub const SCOPE_SIZE: usize = 256;
 const SCOPE_DOWNSAMPLE: usize = 4;
 
+#[inline]
+fn hermite_interpolate(s0: f32, s1: f32, s2: f32, s3: f32, t: f32) -> f32 {
+    let c0 = s1;
+    let c1 = 0.5 * (s2 - s0);
+    let c2 = s0 - 2.5 * s1 + 2.0 * s2 - 0.5 * s3;
+    let c3 = 0.5 * (s3 - s0) + 1.5 * (s1 - s2);
+    ((c3 * t + c2) * t + c1) * t + c0
+}
+
 pub struct ScopeBuffer {
     pub samples: Box<[AtomicU32; SCOPE_SIZE]>,
     pub write_pos: AtomicUsize,
@@ -220,10 +229,16 @@ impl Channel {
 
         let sample = if idx >= len {
             0.0
-        } else if idx + 1 < len {
-            samples[idx] + (samples[idx + 1] - samples[idx]) * frac
         } else {
-            samples[idx]
+            let s0 = if idx > 0 {
+                samples[idx - 1]
+            } else {
+                samples[idx]
+            };
+            let s1 = samples[idx];
+            let s2 = if idx + 1 < len { samples[idx + 1] } else { s1 };
+            let s3 = if idx + 2 < len { samples[idx + 2] } else { s2 };
+            hermite_interpolate(s0, s1, s2, s3, frac)
         };
 
         self.sample_position += self.sample_step * self.sample_direction;
@@ -310,6 +325,7 @@ pub struct TrackerSource {
     pub stop_at_end: bool,
     channel_scopes: Arc<Vec<ScopeBuffer>>,
     scope_counter: usize,
+    command_check_counter: usize,
 }
 
 fn compute_samples_per_tick(bpm: u16, rows_per_beat: usize) -> f64 {
@@ -347,6 +363,7 @@ impl TrackerSource {
             stop_at_end: false,
             channel_scopes,
             scope_counter: 0,
+            command_check_counter: 32,
         }
     }
 
@@ -541,8 +558,6 @@ impl TrackerSource {
     }
 
     fn tick(&mut self) {
-        self.process_commands();
-
         self.tick_in_row += 1;
         if self.playing && self.tick_in_row >= TICKS_PER_ROW {
             self.tick_in_row = 0;
@@ -595,6 +610,12 @@ impl Iterator for TrackerSource {
 
         if self.stop_at_end && !self.playing {
             return None;
+        }
+
+        self.command_check_counter += 1;
+        if self.command_check_counter >= 32 {
+            self.command_check_counter = 0;
+            self.process_commands();
         }
 
         let mut mix_l = 0.0_f32;
@@ -662,11 +683,11 @@ impl Source for TrackerSource {
     }
 
     fn channels(&self) -> NonZero<u16> {
-        unsafe { NonZero::new_unchecked(2) }
+        NonZero::new(2).unwrap()
     }
 
     fn sample_rate(&self) -> NonZero<u32> {
-        unsafe { NonZero::new_unchecked(SAMPLE_RATE) }
+        NonZero::new(SAMPLE_RATE).unwrap()
     }
 
     fn total_duration(&self) -> Option<Duration> {
@@ -774,7 +795,10 @@ mod tests {
         }
 
         tx.send(Command::Stop).unwrap();
-        source.next();
+
+        for _ in 0..128 {
+            source.next();
+        }
 
         for _ in 0..100 {
             assert_eq!(source.next(), Some(0.0));

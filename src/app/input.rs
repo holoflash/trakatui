@@ -79,9 +79,13 @@ impl App {
                 return false;
             }
 
-            match self.mode {
+            let result = match self.mode {
                 Mode::Edit => self.handle_edit_input(input, &actions),
-            }
+            };
+
+            self.current_track = self.cursor.channel;
+
+            result
         })
     }
 
