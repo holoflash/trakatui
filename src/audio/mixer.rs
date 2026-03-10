@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use rodio::Source;
 
-use crate::project::channel::{Track, VolEnvelope};
+use crate::project::channel::{FilterSettings, FilterType, Track, VolEnvelope};
 use crate::project::sample::LoopType;
 use crate::project::{Cell, SampleData};
 
@@ -46,9 +46,9 @@ impl ScopeBuffer {
     pub fn read_all(&self) -> [f32; SCOPE_SIZE] {
         let wp = self.write_pos.load(Ordering::Relaxed);
         let mut out = [0.0f32; SCOPE_SIZE];
-        for i in 0..SCOPE_SIZE {
+        for (i, slot) in out.iter_mut().enumerate() {
             let idx = (wp + i) % SCOPE_SIZE;
-            out[i] = f32::from_bits(self.samples[idx].load(Ordering::Relaxed));
+            *slot = f32::from_bits(self.samples[idx].load(Ordering::Relaxed));
         }
         out
     }
@@ -84,6 +84,12 @@ pub enum Command {
         sample_data: Arc<SampleData>,
         master_volume: f32,
         vol_fadeout: u16,
+        coarse_tune: i8,
+        fine_tune: i8,
+        pitch_env_enabled: bool,
+        pitch_env_depth: f32,
+        pitch_envelope: VolEnvelope,
+        filter: FilterSettings,
     },
 }
 
@@ -119,6 +125,7 @@ struct Channel {
     active: bool,
     sample_data: Arc<SampleData>,
     sample_position: f64,
+    base_sample_step: f64,
     sample_step: f64,
     sample_direction: f64,
     vol_envelope: VolEnvelope,
@@ -133,6 +140,28 @@ struct Channel {
     note_released: bool,
     fadeout_vol: u32,
     vol_fadeout_per_tick: u16,
+
+    coarse_tune: i8,
+    fine_tune: i8,
+    pitch_env_enabled: bool,
+    pitch_env_depth: f32,
+    pitch_envelope: VolEnvelope,
+    pitch_env_tick: u16,
+    cached_pitch_env: f32,
+
+    filter: FilterSettings,
+    filter_env_tick: u16,
+    cached_filter_env: f32,
+    filt_z1: f32,
+    filt_z2: f32,
+    filt_a0: f32,
+    filt_a1: f32,
+    filt_a2: f32,
+    filt_b1: f32,
+    filt_b2: f32,
+
+    region_start: usize,
+    region_end: usize,
 }
 
 impl Channel {
@@ -141,6 +170,7 @@ impl Channel {
             active: false,
             sample_data: SampleData::silent(),
             sample_position: 0.0,
+            base_sample_step: 0.0,
             sample_step: 0.0,
             sample_direction: 1.0,
             vol_envelope: VolEnvelope::disabled(),
@@ -154,6 +184,28 @@ impl Channel {
             note_released: false,
             fadeout_vol: 65536,
             vol_fadeout_per_tick: 0,
+
+            coarse_tune: 0,
+            fine_tune: 0,
+            pitch_env_enabled: false,
+            pitch_env_depth: 12.0,
+            pitch_envelope: VolEnvelope::disabled(),
+            pitch_env_tick: 0,
+            cached_pitch_env: 0.5,
+
+            filter: FilterSettings::default(),
+            filter_env_tick: 0,
+            cached_filter_env: 1.0,
+            filt_z1: 0.0,
+            filt_z2: 0.0,
+            filt_a0: 1.0,
+            filt_a1: 0.0,
+            filt_a2: 0.0,
+            filt_b1: 0.0,
+            filt_b2: 0.0,
+
+            region_start: 0,
+            region_end: 0,
         }
     }
 
@@ -163,12 +215,20 @@ impl Channel {
         self.pan_r = pan.sqrt();
     }
 
-    fn compute_sample_step(frequency: f32, data: &SampleData) -> f64 {
+    fn compute_sample_step(
+        frequency: f32,
+        data: &SampleData,
+        coarse_tune: i8,
+        fine_tune: i8,
+    ) -> f64 {
+        let tune_semitones = f64::from(coarse_tune) + f64::from(fine_tune) / 100.0;
+        let tune_ratio = (tune_semitones / 12.0).exp2();
         let base_freq = 440.0 * ((f32::from(data.base_note) - 69.0) / 12.0).exp2();
         let rate = f64::from(frequency) / f64::from(base_freq);
-        (f64::from(data.sample_rate) / f64::from(SAMPLE_RATE)) * rate
+        (f64::from(data.sample_rate) / f64::from(SAMPLE_RATE)) * rate * tune_ratio
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn trigger(
         &mut self,
         frequency: f32,
@@ -176,19 +236,61 @@ impl Channel {
         vol_envelope: VolEnvelope,
         sample_data: &Arc<SampleData>,
         vol_fadeout_per_tick: u16,
+        coarse_tune: i8,
+        fine_tune: i8,
+        pitch_env_enabled: bool,
+        pitch_env_depth: f32,
+        pitch_envelope: VolEnvelope,
+        filter: FilterSettings,
     ) {
         self.active = true;
         self.volume = volume;
         self.vol_envelope = vol_envelope;
         self.sample_data = Arc::clone(sample_data);
-        self.sample_step = Self::compute_sample_step(frequency, sample_data);
-        self.sample_position = 0.0;
+
+        self.coarse_tune = coarse_tune;
+        self.fine_tune = fine_tune;
+        self.base_sample_step =
+            Self::compute_sample_step(frequency, sample_data, coarse_tune, fine_tune);
+        self.sample_step = self.base_sample_step;
+
+        self.region_start = sample_data.region_start;
+        self.region_end = if sample_data.region_end == 0 {
+            sample_data.samples_f32.len()
+        } else {
+            sample_data.region_end
+        };
+        self.sample_position = self.region_start as f64;
+
         self.sample_direction = 1.0;
         self.env_tick = 0;
         self.cached_env_amp = self.vol_envelope.amplitude_at_tick(0);
         self.note_released = false;
         self.fadeout_vol = 65536;
         self.vol_fadeout_per_tick = vol_fadeout_per_tick;
+
+        self.pitch_env_enabled = pitch_env_enabled;
+        self.pitch_env_depth = pitch_env_depth;
+        self.pitch_envelope = pitch_envelope;
+        self.pitch_env_tick = 0;
+        self.cached_pitch_env = if self.pitch_env_enabled {
+            self.pitch_envelope.amplitude_at_tick(0)
+        } else {
+            0.5
+        };
+
+        self.filter = filter;
+        self.filter_env_tick = 0;
+        self.cached_filter_env = if self.filter.enabled && self.filter.envelope.enabled {
+            self.filter.envelope.amplitude_at_tick(0)
+        } else {
+            1.0
+        };
+        self.filt_z1 = 0.0;
+        self.filt_z2 = 0.0;
+        if self.filter.enabled {
+            self.update_filter_coeffs();
+        }
     }
 
     fn note_off(&mut self) {
@@ -196,6 +298,68 @@ impl Channel {
         if !self.vol_envelope.enabled {
             self.active = false;
         }
+    }
+
+    fn update_filter_coeffs(&mut self) {
+        let env_mod = if self.filter.envelope.enabled {
+            let mod_octaves = self.filter.env_depth * (self.cached_filter_env * 2.0 - 1.0) * 4.0;
+            (mod_octaves).exp2()
+        } else {
+            1.0
+        };
+
+        let cutoff = (self.filter.cutoff * env_mod).clamp(20.0, 20000.0);
+        let q = 0.5 + self.filter.resonance * 9.5;
+
+        let omega = std::f32::consts::TAU * cutoff / SAMPLE_RATE as f32;
+        let sin_w = omega.sin();
+        let cos_w = omega.cos();
+        let alpha = sin_w / (2.0 * q);
+
+        let (b0, b1, b2, a0, a1, a2) = match self.filter.filter_type {
+            FilterType::LowPass => {
+                let b1 = 1.0 - cos_w;
+                let b0 = b1 / 2.0;
+                let b2 = b0;
+                let a0 = 1.0 + alpha;
+                let a1 = -2.0 * cos_w;
+                let a2 = 1.0 - alpha;
+                (b0, b1, b2, a0, a1, a2)
+            }
+            FilterType::HighPass => {
+                let b1 = -(1.0 + cos_w);
+                let b0 = (1.0 + cos_w) / 2.0;
+                let b2 = b0;
+                let a0 = 1.0 + alpha;
+                let a1 = -2.0 * cos_w;
+                let a2 = 1.0 - alpha;
+                (b0, b1, b2, a0, a1, a2)
+            }
+            FilterType::BandPass => {
+                let b0 = alpha;
+                let b1 = 0.0;
+                let b2 = -alpha;
+                let a0 = 1.0 + alpha;
+                let a1 = -2.0 * cos_w;
+                let a2 = 1.0 - alpha;
+                (b0, b1, b2, a0, a1, a2)
+            }
+        };
+
+        let inv_a0 = 1.0 / a0;
+        self.filt_a0 = b0 * inv_a0;
+        self.filt_a1 = b1 * inv_a0;
+        self.filt_a2 = b2 * inv_a0;
+        self.filt_b1 = a1 * inv_a0;
+        self.filt_b2 = a2 * inv_a0;
+    }
+
+    #[inline]
+    fn apply_filter(&mut self, input: f32) -> f32 {
+        let output = self.filt_a0 * input + self.filt_z1;
+        self.filt_z1 = self.filt_a1 * input - self.filt_b1 * output + self.filt_z2;
+        self.filt_z2 = self.filt_a2 * input - self.filt_b2 * output;
+        output
     }
 
     #[inline]
@@ -262,18 +426,24 @@ impl Channel {
                     }
                 }
                 LoopType::None => {
-                    if self.sample_position >= len as f64 {
+                    if self.sample_position >= self.region_end as f64 {
                         self.active = false;
                         return 0.0;
                     }
                 }
             }
-        } else if self.sample_position >= len as f64 {
+        } else if self.sample_position >= self.region_end as f64 {
             self.active = false;
             return 0.0;
         }
 
-        sample * env * self.volume * fadeout_factor
+        let filtered = if self.filter.enabled {
+            self.apply_filter(sample)
+        } else {
+            sample
+        };
+
+        filtered * env * self.volume * fadeout_factor
     }
 
     #[inline]
@@ -296,6 +466,25 @@ impl Channel {
             if self.fadeout_vol == 0 {
                 self.active = false;
             }
+        }
+
+        if self.pitch_env_enabled && self.pitch_envelope.enabled {
+            self.pitch_env_tick = self
+                .pitch_envelope
+                .advance_tick(self.pitch_env_tick, self.note_released);
+            self.cached_pitch_env = self.pitch_envelope.amplitude_at_tick(self.pitch_env_tick);
+            let pitch_mod_semitones = (self.cached_pitch_env - 0.5) * 2.0 * self.pitch_env_depth;
+            let pitch_ratio = (f64::from(pitch_mod_semitones) / 12.0).exp2();
+            self.sample_step = self.base_sample_step * pitch_ratio;
+        }
+
+        if self.filter.enabled && self.filter.envelope.enabled {
+            self.filter_env_tick = self
+                .filter
+                .envelope
+                .advance_tick(self.filter_env_tick, self.note_released);
+            self.cached_filter_env = self.filter.envelope.amplitude_at_tick(self.filter_env_tick);
+            self.update_filter_coeffs();
         }
     }
 }
@@ -430,6 +619,12 @@ impl TrackerSource {
                     sample_data,
                     master_volume,
                     vol_fadeout,
+                    coarse_tune,
+                    fine_tune,
+                    pitch_env_enabled,
+                    pitch_env_depth,
+                    pitch_envelope,
+                    filter,
                 } => {
                     let fadeout = if vol_envelope.enabled && vol_fadeout == 0 {
                         256
@@ -442,6 +637,12 @@ impl TrackerSource {
                         vol_envelope,
                         &sample_data,
                         fadeout,
+                        coarse_tune,
+                        fine_tune,
+                        pitch_env_enabled,
+                        pitch_env_depth,
+                        pitch_envelope,
+                        filter,
                     );
                     self.preview_channel.set_panning(panning);
                     self.preview_ticks_remaining = PREVIEW_RELEASE_TICKS;
@@ -540,6 +741,12 @@ impl TrackerSource {
                         track.vol_envelope.clone(),
                         sample_data,
                         track.vol_fadeout,
+                        track.coarse_tune,
+                        track.fine_tune,
+                        track.pitch_env_enabled,
+                        track.pitch_env_depth,
+                        track.pitch_envelope.clone(),
+                        track.filter.clone(),
                     );
                     if raw_panning.is_none() && channel.last_panning.is_none() {
                         channel.set_panning(track.default_panning);
@@ -549,16 +756,17 @@ impl TrackerSource {
                 Cell::Empty => {}
             }
 
-            if cell == Cell::Empty || cell == Cell::NoteOff {
-                if let Some(v) = volume {
+            if (cell == Cell::Empty || cell == Cell::NoteOff)
+                && let Some(v) = volume {
                     channel.volume = v as f32 / 255.0;
                 }
-            }
         }
     }
 
     fn tick(&mut self) {
-        self.tick_in_row += 1;
+        if self.playing {
+            self.tick_in_row += 1;
+        }
         if self.playing && self.tick_in_row >= TICKS_PER_ROW {
             self.tick_in_row = 0;
             if !self.patterns.is_empty() {
@@ -622,7 +830,7 @@ impl Iterator for TrackerSource {
         let mut mix_r = 0.0_f32;
 
         self.scope_counter += 1;
-        let write_scope = self.scope_counter % SCOPE_DOWNSAMPLE == 0;
+        let write_scope = self.scope_counter.is_multiple_of(SCOPE_DOWNSAMPLE);
 
         self.tick_sample_counter += 1.0;
         if self.tick_sample_counter >= self.samples_per_tick {
@@ -633,28 +841,25 @@ impl Iterator for TrackerSource {
         if self.playing {
             for (ch_idx, ch) in self.channels.iter_mut().enumerate() {
                 if !ch.active {
-                    if write_scope {
-                        if let Some(scope) = self.channel_scopes.get(ch_idx) {
+                    if write_scope
+                        && let Some(scope) = self.channel_scopes.get(ch_idx) {
                             scope.push(0.0);
                         }
-                    }
                     continue;
                 }
                 if self.muted_channels.get(ch_idx).copied().unwrap_or(false) {
                     ch.next_sample();
-                    if write_scope {
-                        if let Some(scope) = self.channel_scopes.get(ch_idx) {
+                    if write_scope
+                        && let Some(scope) = self.channel_scopes.get(ch_idx) {
                             scope.push(0.0);
                         }
-                    }
                     continue;
                 }
                 let sample = ch.next_sample();
-                if write_scope {
-                    if let Some(scope) = self.channel_scopes.get(ch_idx) {
+                if write_scope
+                    && let Some(scope) = self.channel_scopes.get(ch_idx) {
                         scope.push(sample);
                     }
-                }
                 mix_l += sample * ch.pan_l;
                 mix_r += sample * ch.pan_r;
             }
@@ -664,11 +869,10 @@ impl Iterator for TrackerSource {
         mix_l += preview * self.preview_channel.pan_l;
         mix_r += preview * self.preview_channel.pan_r;
 
-        if !self.playing && self.preview_channel.active && write_scope {
-            if let Some(scope) = self.channel_scopes.first() {
+        if !self.playing && self.preview_channel.active && write_scope
+            && let Some(scope) = self.channel_scopes.first() {
                 scope.push(preview);
             }
-        }
 
         self.right_sample = mix_r;
         self.stereo_phase = true;

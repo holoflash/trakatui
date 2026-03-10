@@ -49,11 +49,10 @@ impl App {
             for s in &mut self.display_scopes {
                 s.fill(0.0);
             }
-            if let Some(scope) = self.channel_scopes.first() {
-                if !self.display_scopes.is_empty() {
+            if let Some(scope) = self.channel_scopes.first()
+                && !self.display_scopes.is_empty() {
                     self.display_scopes[0] = scope.read_all();
                 }
-            }
             return;
         }
         let row = self.playback_row.load(Ordering::Relaxed);

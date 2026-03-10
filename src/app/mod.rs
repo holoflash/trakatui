@@ -43,6 +43,7 @@ pub enum ClipboardData {
 }
 
 pub struct MovePreview {
+    #[allow(clippy::type_complexity)]
     pub cells: Vec<(usize, usize, Cell, Option<u8>, Option<u8>, Option<Effect>)>,
     pub origin_anchor: (usize, usize, SubColumn),
     pub origin_cursor: (usize, usize, SubColumn),
@@ -61,6 +62,12 @@ pub struct Cursor {
     pub panning_edit_pos: usize,
     pub selection_anchor: Option<(usize, usize, SubColumn)>,
     pub octave: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WaveformDrag {
+    RegionStart,
+    RegionEnd,
 }
 
 pub struct App {
@@ -97,6 +104,11 @@ pub struct App {
     pub show_quit_confirm: bool,
     pub show_new_confirm: bool,
     pub move_preview: Option<MovePreview>,
+    pub dragging_waveform: Option<WaveformDrag>,
+    pub pitch_envelope_point_idx: usize,
+    pub dragging_pitch_env_point: Option<usize>,
+    pub filter_envelope_point_idx: usize,
+    pub dragging_filter_env_point: Option<usize>,
 }
 
 impl App {
@@ -148,6 +160,11 @@ impl App {
             show_quit_confirm: false,
             show_new_confirm: false,
             move_preview: None,
+            dragging_waveform: None,
+            pitch_envelope_point_idx: 0,
+            dragging_pitch_env_point: None,
+            filter_envelope_point_idx: 0,
+            dragging_filter_env_point: None,
         }
     }
 

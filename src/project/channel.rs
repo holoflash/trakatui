@@ -47,6 +47,51 @@ impl WaveformKind {
     ];
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
+#[allow(clippy::enum_variant_names)]
+pub enum FilterType {
+    #[default]
+    LowPass,
+    HighPass,
+    BandPass,
+}
+
+impl FilterType {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::LowPass => "LP",
+            Self::HighPass => "HP",
+            Self::BandPass => "BP",
+        }
+    }
+    pub const ALL: &'static [Self] = &[Self::LowPass, Self::HighPass, Self::BandPass];
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FilterSettings {
+    pub enabled: bool,
+    pub filter_type: FilterType,
+    pub cutoff: f32,
+    pub resonance: f32,
+    pub env_depth: f32,
+    pub envelope: VolEnvelope,
+}
+
+impl Default for FilterSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            filter_type: FilterType::LowPass,
+            cutoff: 20000.0,
+            resonance: 0.0,
+            env_depth: 0.0,
+            envelope: VolEnvelope::disabled(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VolEnvelope {
     pub points: Vec<(u16, u16)>,
@@ -141,6 +186,22 @@ pub struct Track {
     pub note_to_sample: Vec<u8>,
     pub vol_fadeout: u16,
     pub default_panning: f32,
+    #[serde(default)]
+    pub coarse_tune: i8,
+    #[serde(default)]
+    pub fine_tune: i8,
+    #[serde(default)]
+    pub pitch_env_enabled: bool,
+    #[serde(default = "default_pitch_env_depth")]
+    pub pitch_env_depth: f32,
+    #[serde(default = "VolEnvelope::disabled")]
+    pub pitch_envelope: VolEnvelope,
+    #[serde(default)]
+    pub filter: FilterSettings,
+}
+
+fn default_pitch_env_depth() -> f32 {
+    12.0
 }
 
 impl Track {
@@ -171,6 +232,12 @@ impl Track {
             note_to_sample: Vec::new(),
             vol_fadeout: 0,
             default_panning: 0.5,
+            coarse_tune: 0,
+            fine_tune: 0,
+            pitch_env_enabled: false,
+            pitch_env_depth: 12.0,
+            pitch_envelope: VolEnvelope::disabled(),
+            filter: FilterSettings::default(),
         }
     }
 }

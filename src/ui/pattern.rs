@@ -191,8 +191,8 @@ fn draw_header_row(
                     .rect_filled(scope_rect, 0.0, COLOR_LAYOUT_BG_DARK);
                 ui.painter().rect_filled(label_rect, 0.0, cell_bg);
 
-                if sub == 2 {
-                    if let Some(scope_data) = scopes.get(ch) {
+                if sub == 2
+                    && let Some(scope_data) = scopes.get(ch) {
                         let wide_rect = egui::Rect::from_min_max(
                             Pos2::new(ch_start_x.get(), scope_top.get()),
                             Pos2::new(full.max.x, scope_bottom.get()),
@@ -229,7 +229,6 @@ fn draw_header_row(
                             Stroke::new(1.0, COLOR_TEXT_DIM),
                         );
                     }
-                }
 
                 let response = ui.interact(
                     label_rect,
@@ -371,12 +370,12 @@ fn draw_body_row(row: &mut egui_extras::TableRow<'_, '_>, app: &mut App, channel
         let mut volume_val = pat.get_volume(ch, row_idx);
         let mut effect_cmd = pat.get_effect(ch, row_idx);
 
-        if let Some(ref preview) = app.move_preview {
-            if let Some((min_ch, _, min_row, _, _, _)) = sel_bounds {
+        if let Some(ref preview) = app.move_preview
+            && let Some((min_ch, _, min_row, _, _, _)) = sel_bounds {
                 let ch_off = ch.wrapping_sub(min_ch);
                 let row_off = row_idx.wrapping_sub(min_row);
-                if in_selection {
-                    if let Some((_, _, p_cell, p_inst, p_vol, p_fx)) = preview
+                if in_selection
+                    && let Some((_, _, p_cell, p_inst, p_vol, p_fx)) = preview
                         .cells
                         .iter()
                         .find(|(co, ro, _, _, _, _)| *co == ch_off && *ro == row_off)
@@ -394,9 +393,7 @@ fn draw_body_row(row: &mut egui_extras::TableRow<'_, '_>, app: &mut App, channel
                             effect_cmd = *p_fx;
                         }
                     }
-                }
             }
-        }
 
         let note_text = match cell {
             Cell::NoteOn(note) => note.name(),
@@ -543,7 +540,7 @@ fn draw_sub_column(
     ui.add_space(pad_right);
 
     let pointer_pos = ui.input(|i| i.pointer.hover_pos());
-    if pointer_pos.map_or(false, |p| ui.max_rect().contains(p)) {
+    if pointer_pos.is_some_and(|p| ui.max_rect().contains(p)) {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         if ui.input(|i| i.pointer.primary_pressed()) {
             app.clear_selection();

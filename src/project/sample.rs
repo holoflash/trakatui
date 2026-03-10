@@ -27,6 +27,10 @@ pub struct SampleData {
     pub loop_type: LoopType,
     pub loop_start: usize,
     pub loop_length: usize,
+    #[serde(default)]
+    pub region_start: usize,
+    #[serde(default)]
+    pub region_end: usize,
 }
 impl SampleData {
     #[inline]
@@ -72,6 +76,7 @@ impl SampleData {
             .map(|&s| f32::from(s) * INV_I16_MAX)
             .collect();
 
+        let total_len = samples_i16.len();
         Ok(Arc::new(Self {
             samples_i16,
             samples_f32,
@@ -80,6 +85,8 @@ impl SampleData {
             loop_type: LoopType::None,
             loop_start: 0,
             loop_length: 0,
+            region_start: 0,
+            region_end: total_len,
         }))
     }
 
@@ -101,6 +108,8 @@ impl SampleData {
             },
             loop_start: 0,
             loop_length: if looped { len } else { 0 },
+            region_start: 0,
+            region_end: len,
         })
     }
 
@@ -182,6 +191,8 @@ mod tests {
             loop_type: LoopType::None,
             loop_start: 0,
             loop_length: 0,
+            region_start: 0,
+            region_end: 44100,
         };
         assert_eq!(data.samples_i16.len(), 44100);
         assert_eq!(data.samples_f32.len(), 44100);
