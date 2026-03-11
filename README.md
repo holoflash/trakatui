@@ -1,45 +1,10 @@
 # PSIKAT
 
-A lightweight cross-platform music tracker built with Rust and egui.
+A lightweight cross-platform tracker inspired sequencer built with Rust and egui.
 
 ![screenshot](screenshot.png)
 
 ## 🚧 UNDER DEVELOPMENT
-
-### Features
-
-**Playback & Audio**
-
-- Real-time playback with play-from-cursor support
-- Stereo WAV export (44.1kHz, 16-bit)
-- Master volume control with peak meter
-- Per-channel muting/soloing
-
-**Pattern Editor**
-
-- Note, instrument, volume, and effect columns
-- Multi-pattern support with order table
-- Selection, copy/paste, fill, and transpose
-- Configurable edit step and subdivision
-
-**Instruments & Synthesis**
-
-- 5 built-in waveforms (sine, triangle, square, saw, noise)
-- Sample import with drag-and-drop
-- Sample loops and volume envelopes
-- Auto-vibrato
-- Envelope editor
-
-**UI & Input**
-
-- Chromatic keyboard input (Z-P)
-- Musical scales for input transposition
-- Keyboard shortcut reference
-
-**.psikat format**
-
-- Save/load native .psikat project files
-- Undo/redo (100 steps)
 
 **TODO**
 
