@@ -4,7 +4,7 @@ pub mod pattern;
 pub mod sample;
 
 pub use channel::Track;
-pub use pattern::{Cell, Effect, Note, Pattern, effect_display, panning_display, volume_display};
+pub use pattern::{Cell, Note, Pattern};
 pub use sample::SampleData;
 
 use crate::app::scale::ScaleIndex;

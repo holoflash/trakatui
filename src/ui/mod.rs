@@ -34,9 +34,7 @@ pub const COLOR_PATTERN_PLAYBACK_TEXT: Color32 = Color32::from_rgb(255, 245, 220
 pub const COLOR_PATTERN_SELECTION_BG: Color32 = Color32::from_rgb(100, 85, 50);
 pub const COLOR_PATTERN_SELECTION_TEXT: Color32 = Color32::from_rgb(245, 235, 200);
 
-pub const COLOR_PATTERN_EFFECT: Color32 = Color32::from_rgb(200, 140, 60);
-pub const COLOR_PATTERN_PANNING: Color32 = Color32::from_rgb(185, 155, 115);
-pub const COLOR_PATTERN_VOLUME: Color32 = Color32::from_rgb(160, 175, 110);
+
 
 pub fn draw(ctx: &egui::Context, app: &mut App) {
     header::draw_header(ctx, app);

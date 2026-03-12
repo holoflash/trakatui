@@ -1,35 +1,6 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Effect {
-    pub kind: u8,
-    pub param: u8,
-}
-
-pub type EffectCommand = Option<Effect>;
-
-pub fn effect_display(cmd: EffectCommand) -> String {
-    match cmd {
-        Some(fx) => format!("{:X}{:02X}", fx.kind, fx.param),
-        None => "···".to_string(),
-    }
-}
-
-pub fn volume_display(vol: Option<u8>) -> String {
-    match vol {
-        Some(v) => format!("{:02X}", v),
-        None => "··".to_string(),
-    }
-}
-
-pub fn panning_display(pan: Option<u8>) -> String {
-    match pan {
-        Some(p) => format!("{:02X}", p),
-        None => "··".to_string(),
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Note {
     pub pitch: u8,
 }
@@ -66,10 +37,7 @@ pub enum Cell {
 pub struct Pattern {
     pub channels: usize,
     pub rows: usize,
-    pub data: Vec<Vec<Cell>>,
-    pub panning: Vec<Vec<Option<u8>>>,
-    pub volumes: Vec<Vec<Option<u8>>>,
-    pub effects: Vec<Vec<EffectCommand>>,
+    pub data: Vec<Vec<Vec<Cell>>>,
 }
 
 impl Pattern {
@@ -77,93 +45,54 @@ impl Pattern {
         Self {
             channels,
             rows,
-            data: vec![vec![Cell::Empty; rows]; channels],
-            panning: vec![vec![None; rows]; channels],
-            volumes: vec![vec![None; rows]; channels],
-            effects: vec![vec![None; rows]; channels],
+            data: vec![vec![vec![Cell::Empty; rows]]; channels],
         }
     }
 
-    pub fn get(&self, channel: usize, row: usize) -> Cell {
-        self.data[channel][row]
+    pub fn get(&self, channel: usize, voice: usize, row: usize) -> Cell {
+        self.data[channel][voice][row]
     }
 
-    pub fn set(&mut self, channel: usize, row: usize, cell: Cell) {
-        self.data[channel][row] = cell;
+    pub fn set(&mut self, channel: usize, voice: usize, row: usize, cell: Cell) {
+        self.data[channel][voice][row] = cell;
     }
 
-    pub fn clear(&mut self, channel: usize, row: usize) {
-        self.data[channel][row] = Cell::Empty;
+    pub fn clear(&mut self, channel: usize, voice: usize, row: usize) {
+        self.data[channel][voice][row] = Cell::Empty;
     }
 
-    pub fn get_effect(&self, channel: usize, row: usize) -> EffectCommand {
-        self.effects[channel][row]
+    pub fn voice_count(&self, channel: usize) -> usize {
+        self.data[channel].len()
     }
 
-    pub fn set_effect(&mut self, channel: usize, row: usize, cmd: EffectCommand) {
-        self.effects[channel][row] = cmd;
-    }
-
-    pub fn clear_effect(&mut self, channel: usize, row: usize) {
-        self.effects[channel][row] = None;
-    }
-
-    pub fn get_volume(&self, channel: usize, row: usize) -> Option<u8> {
-        self.volumes[channel][row]
-    }
-
-    pub fn set_volume(&mut self, channel: usize, row: usize, vol: Option<u8>) {
-        self.volumes[channel][row] = vol;
-    }
-
-    pub fn clear_volume(&mut self, channel: usize, row: usize) {
-        self.volumes[channel][row] = None;
-    }
-
-    pub fn get_panning(&self, channel: usize, row: usize) -> Option<u8> {
-        self.panning[channel][row]
-    }
-
-    pub fn set_panning(&mut self, channel: usize, row: usize, pan: Option<u8>) {
-        self.panning[channel][row] = pan;
-    }
-
-    pub fn clear_panning(&mut self, channel: usize, row: usize) {
-        self.panning[channel][row] = None;
+    pub fn set_voice_count(&mut self, channel: usize, count: usize) {
+        let current = self.data[channel].len();
+        if count > current {
+            for _ in current..count {
+                self.data[channel].push(vec![Cell::Empty; self.rows]);
+            }
+        } else if count < current && count >= 1 {
+            self.data[channel].truncate(count);
+        }
     }
 
     pub fn resize(&mut self, new_rows: usize) {
-        if new_rows > self.data[0].len() {
-            for ch in &mut self.data {
-                ch.resize(new_rows, Cell::Empty);
-            }
-            for ch in &mut self.panning {
-                ch.resize(new_rows, None);
-            }
-            for ch in &mut self.volumes {
-                ch.resize(new_rows, None);
-            }
-            for ch in &mut self.effects {
-                ch.resize(new_rows, None);
+        for ch in &mut self.data {
+            for voice in ch.iter_mut() {
+                voice.resize(new_rows, Cell::Empty);
             }
         }
         self.rows = new_rows;
     }
 
     pub fn add_channel(&mut self) {
-        self.data.push(vec![Cell::Empty; self.rows]);
-        self.panning.push(vec![None; self.rows]);
-        self.volumes.push(vec![None; self.rows]);
-        self.effects.push(vec![None; self.rows]);
+        self.data.push(vec![vec![Cell::Empty; self.rows]]);
         self.channels += 1;
     }
 
     pub fn remove_channel(&mut self, idx: usize) {
         if idx < self.channels && self.channels > 1 {
             self.data.remove(idx);
-            self.panning.remove(idx);
-            self.volumes.remove(idx);
-            self.effects.remove(idx);
             self.channels -= 1;
         }
     }
@@ -190,54 +119,24 @@ mod tests {
     #[test]
     fn pattern_basics() {
         let mut pat = Pattern::new(4, 16);
-        assert_eq!(pat.get(0, 0), Cell::Empty);
-        pat.set(0, 0, Cell::NoteOn(Note::new(49)));
-        assert_eq!(pat.get(0, 0), Cell::NoteOn(Note::new(49)));
-        pat.set(0, 1, Cell::NoteOff);
-        assert_eq!(pat.get(0, 1), Cell::NoteOff);
-        pat.clear(0, 0);
-        assert_eq!(pat.get(0, 0), Cell::Empty);
+        assert_eq!(pat.get(0, 0, 0), Cell::Empty);
+        pat.set(0, 0, 0, Cell::NoteOn(Note::new(49)));
+        assert_eq!(pat.get(0, 0, 0), Cell::NoteOn(Note::new(49)));
+        pat.set(0, 0, 1, Cell::NoteOff);
+        assert_eq!(pat.get(0, 0, 1), Cell::NoteOff);
+        pat.clear(0, 0, 0);
+        assert_eq!(pat.get(0, 0, 0), Cell::Empty);
     }
 
     #[test]
-    fn effect_command_basics() {
+    fn polyphony() {
         let mut pat = Pattern::new(2, 8);
-        assert_eq!(pat.get_effect(0, 0), None);
-
-        let cmd = Some(Effect {
-            kind: 1,
-            param: 0x20,
-        });
-        pat.set_effect(0, 0, cmd);
-        assert_eq!(pat.get_effect(0, 0), cmd);
-
-        pat.clear_effect(0, 0);
-        assert_eq!(pat.get_effect(0, 0), None);
-    }
-
-    #[test]
-    fn effect_display_formatting() {
-        assert_eq!(effect_display(None), "···");
-        assert_eq!(
-            effect_display(Some(Effect {
-                kind: 1,
-                param: 0xFF
-            })),
-            "1FF"
-        );
-        assert_eq!(
-            effect_display(Some(Effect {
-                kind: 0xA,
-                param: 0x04
-            })),
-            "A04"
-        );
-        assert_eq!(
-            effect_display(Some(Effect {
-                kind: 2,
-                param: 0x30
-            })),
-            "230"
-        );
+        assert_eq!(pat.voice_count(0), 1);
+        pat.set_voice_count(0, 3);
+        assert_eq!(pat.voice_count(0), 3);
+        pat.set(0, 2, 4, Cell::NoteOn(Note::new(60)));
+        assert_eq!(pat.get(0, 2, 4), Cell::NoteOn(Note::new(60)));
+        pat.set_voice_count(0, 1);
+        assert_eq!(pat.voice_count(0), 1);
     }
 }

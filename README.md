@@ -21,7 +21,9 @@ A lightweight cross-platform tracker-like sequencer built with Rust and egui.
 
 ---
 
-While working with the .xm and .mod formats initially was a great starting point, there are already excellent trackers like Furnace, Renoise, OpenMPT, and MilkyTracker that handle legacy formats well and are made by people who have deep knowledge of the tracker format and scene. My background being purely in music production in traditional DAWs, I feel like my efforts are better spent on building something new instead, that aligns more with my own personal preferences. I just really love the tracker workflow, but some habits from traditional DAWs are too ingrained in me to let go of and I'd like to see if I can bridge that gap.
+While working with the .xm and .mod formats initially was a great starting point, there are already excellent trackers like [Furnace](https://tildearrow.org/furnace/), [FamiStudio](https://famistudio.org/), [Renoise](https://www.renoise.com/), [OpenMPT](https://openmpt.org/), and [MilkyTracker](https://milkytracker.org/) that handle legacy formats well and are made by people who have deep knowledge of the tracker format and scene.
+
+Coming from a background of music production in horizontally scrolling, clip-based DAWs; I feel like my efforts are better spent building something new instead, that aligns more with my own personal preferences. I just really love the tracker workflow, but some habits are too ingrained in me to let go of and I wanna see if that friction can produce something unique.
 
 ## Install
 

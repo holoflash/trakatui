@@ -2,10 +2,10 @@ use eframe::egui::{self, Key};
 
 use crate::app::keybindings::Action;
 use crate::app::scale::{Scale, map_key_index_to_note};
+use crate::project::Cell;
 use crate::project::Note;
-use crate::project::{Cell, Effect};
 
-use super::{App, ClipboardData, Mode, MovePreview, SubColumn};
+use super::{App, ClipboardData, Mode, MovePreview};
 
 impl App {
     pub fn handle_input(&mut self, ctx: &egui::Context) -> bool {
@@ -129,7 +129,7 @@ impl App {
             }
         }
 
-        if actions.contains(&Action::NoteOff) && self.cursor.sub_column == SubColumn::Note {
+        if actions.contains(&Action::NoteOff) {
             self.save_undo_snapshot();
             self.handle_note_off();
             return false;
@@ -176,18 +176,7 @@ impl App {
             return false;
         }
 
-        if self.cursor.sub_column == SubColumn::Effect {
-            self.save_undo_snapshot();
-            self.handle_effect_keys(input);
-        } else if self.cursor.sub_column == SubColumn::Volume {
-            self.save_undo_snapshot();
-            self.handle_volume_keys(input);
-        } else if self.cursor.sub_column == SubColumn::Panning {
-            self.save_undo_snapshot();
-            self.handle_panning_keys(input);
-        } else {
-            self.handle_note_keys(input);
-        }
+        self.handle_note_keys(input);
 
         false
     }
@@ -215,10 +204,8 @@ impl App {
             _ => unreachable!(),
         };
 
-        let on_note = self.cursor.sub_column;
-
         if self.move_preview.is_some() {
-            let (min_ch, max_ch, min_row, max_row, _, _) = self.selection_bounds().unwrap();
+            let (min_ch, max_ch, _, _, min_row, max_row) = self.selection_bounds().unwrap();
             let in_bounds = min_row.checked_add_signed(dr).is_some()
                 && max_row
                     .checked_add_signed(dr)
@@ -230,7 +217,7 @@ impl App {
             if in_bounds {
                 self.cursor.channel = self.cursor.channel.checked_add_signed(dc).unwrap();
                 self.cursor.row = self.cursor.row.checked_add_signed(dr).unwrap();
-                if let Some((ach, arow, _)) = self.cursor.selection_anchor.as_mut() {
+                if let Some((ach, _, arow)) = self.cursor.selection_anchor.as_mut() {
                     *ach = ach.checked_add_signed(dc).unwrap();
                     *arow = arow.checked_add_signed(dr).unwrap();
                 }
@@ -238,21 +225,7 @@ impl App {
             return true;
         }
 
-        if let Some((min_ch, max_ch, min_row, max_row, min_sub, max_sub)) = self.selection_bounds()
-        {
-            let has_sub = |sub: SubColumn| -> bool {
-                (min_ch..=max_ch).any(|ch| {
-                    let flat = ch * 4 + sub as usize;
-                    let sel_start = min_ch * 4 + min_sub as usize;
-                    let sel_end = max_ch * 4 + max_sub as usize;
-                    flat >= sel_start && flat <= sel_end
-                })
-            };
-            let move_notes = has_sub(SubColumn::Note);
-            let move_pan = has_sub(SubColumn::Panning);
-            let move_vol = has_sub(SubColumn::Volume);
-            let move_fx = has_sub(SubColumn::Effect);
-
+        if let Some((min_ch, max_ch, _, _, min_row, max_row)) = self.selection_bounds() {
             let in_bounds = min_row.checked_add_signed(dr).is_some()
                 && max_row
                     .checked_add_signed(dr)
@@ -267,23 +240,12 @@ impl App {
 
                 let mut cells = Vec::new();
                 for ch in min_ch..=max_ch {
-                    for row in min_row..=max_row {
-                        let cell = self.project.current_pattern().get(ch, row);
-                        let inst = self.project.current_pattern().get_panning(ch, row);
-                        let vol = self.project.current_pattern().get_volume(ch, row);
-                        let fx = self.project.current_pattern().get_effect(ch, row);
-                        cells.push((ch - min_ch, row - min_row, cell, inst, vol, fx));
-                        if move_notes {
-                            self.project.current_pattern_mut().clear(ch, row);
-                        }
-                        if move_pan {
-                            self.project.current_pattern_mut().clear_panning(ch, row);
-                        }
-                        if move_vol {
-                            self.project.current_pattern_mut().clear_volume(ch, row);
-                        }
-                        if move_fx {
-                            self.project.current_pattern_mut().clear_effect(ch, row);
+                    let voices = self.project.current_pattern().voice_count(ch);
+                    for v in 0..voices {
+                        for row in min_row..=max_row {
+                            let cell = self.project.current_pattern().get(ch, v, row);
+                            cells.push((ch - min_ch, v, row - min_row, cell));
+                            self.project.current_pattern_mut().clear(ch, v, row);
                         }
                     }
                 }
@@ -292,16 +254,12 @@ impl App {
                 self.move_preview = Some(MovePreview {
                     cells,
                     origin_anchor: anchor,
-                    origin_cursor: (self.cursor.channel, self.cursor.row, self.cursor.sub_column),
-                    move_notes,
-                    move_pan,
-                    move_vol,
-                    move_fx,
+                    origin_cursor: (self.cursor.channel, self.cursor.voice, self.cursor.row),
                 });
 
                 self.cursor.channel = self.cursor.channel.checked_add_signed(dc).unwrap();
                 self.cursor.row = self.cursor.row.checked_add_signed(dr).unwrap();
-                if let Some((ach, arow, _)) = self.cursor.selection_anchor.as_mut() {
+                if let Some((ach, _, arow)) = self.cursor.selection_anchor.as_mut() {
                     *ach = ach.checked_add_signed(dc).unwrap();
                     *arow = arow.checked_add_signed(dr).unwrap();
                 }
@@ -313,52 +271,26 @@ impl App {
             && new_ch < self.project.current_pattern().channels
         {
             self.save_undo_snapshot();
-            if on_note == SubColumn::Note {
-                let cell = self
-                    .project
+            let v = self.cursor.voice;
+            let cell = self
+                .project
+                .current_pattern()
+                .get(self.cursor.channel, v, self.cursor.row);
+            self.project
+                .current_pattern_mut()
+                .clear(self.cursor.channel, v, self.cursor.row);
+
+            let target_v = v.min(
+                self.project
                     .current_pattern()
-                    .get(self.cursor.channel, self.cursor.row);
-                self.project
-                    .current_pattern_mut()
-                    .clear(self.cursor.channel, self.cursor.row);
-                self.project
-                    .current_pattern_mut()
-                    .set(new_ch, new_row, cell);
-            } else if on_note == SubColumn::Panning {
-                let inst = self
-                    .project
-                    .current_pattern()
-                    .get_panning(self.cursor.channel, self.cursor.row);
-                self.project
-                    .current_pattern_mut()
-                    .clear_panning(self.cursor.channel, self.cursor.row);
-                self.project
-                    .current_pattern_mut()
-                    .set_panning(new_ch, new_row, inst);
-            } else if on_note == SubColumn::Volume {
-                let vol = self
-                    .project
-                    .current_pattern()
-                    .get_volume(self.cursor.channel, self.cursor.row);
-                self.project
-                    .current_pattern_mut()
-                    .clear_volume(self.cursor.channel, self.cursor.row);
-                self.project
-                    .current_pattern_mut()
-                    .set_volume(new_ch, new_row, vol);
-            } else {
-                let fx = self
-                    .project
-                    .current_pattern()
-                    .get_effect(self.cursor.channel, self.cursor.row);
-                self.project
-                    .current_pattern_mut()
-                    .clear_effect(self.cursor.channel, self.cursor.row);
-                self.project
-                    .current_pattern_mut()
-                    .set_effect(new_ch, new_row, fx);
-            }
+                    .voice_count(new_ch)
+                    .saturating_sub(1),
+            );
+            self.project
+                .current_pattern_mut()
+                .set(new_ch, target_v, new_row, cell);
             self.cursor.channel = new_ch;
+            self.cursor.voice = target_v;
             self.cursor.row = new_row;
         }
 
@@ -369,23 +301,15 @@ impl App {
         let Some(preview) = self.move_preview.take() else {
             return;
         };
-        let (min_ch, _, min_row, _, _, _) = self.selection_bounds().unwrap();
-        for (ch_off, row_off, cell, inst, vol, fx) in &preview.cells {
+        let (min_ch, _, _, _, min_row, _) = self.selection_bounds().unwrap();
+        for (ch_off, v, row_off, cell) in &preview.cells {
             let ch = min_ch + ch_off;
             let row = min_row + row_off;
-            if preview.move_notes {
-                self.project.current_pattern_mut().set(ch, row, *cell);
-            }
-            if preview.move_pan {
-                self.project
-                    .current_pattern_mut()
-                    .set_panning(ch, row, *inst);
-            }
-            if preview.move_vol {
-                self.project.current_pattern_mut().set_volume(ch, row, *vol);
-            }
-            if preview.move_fx {
-                self.project.current_pattern_mut().set_effect(ch, row, *fx);
+            if ch < self.project.current_pattern().channels
+                && *v < self.project.current_pattern().voice_count(ch)
+                && row < self.project.current_pattern().rows
+            {
+                self.project.current_pattern_mut().set(ch, *v, row, *cell);
             }
         }
         self.clear_selection();
@@ -395,33 +319,25 @@ impl App {
         let Some(preview) = self.move_preview.take() else {
             return;
         };
-        let (orig_ach, orig_arow, _) = preview.origin_anchor;
-        let (orig_ch, orig_row, orig_sub) = preview.origin_cursor;
+        let (orig_ach, _orig_avoice, orig_arow) = preview.origin_anchor;
+        let (orig_ch, orig_voice, orig_row) = preview.origin_cursor;
         let base_ch = orig_ach.min(orig_ch);
         let base_row = orig_arow.min(orig_row);
 
-        for (ch_off, row_off, cell, inst, vol, fx) in &preview.cells {
+        for (ch_off, v, row_off, cell) in &preview.cells {
             let ch = base_ch + ch_off;
             let row = base_row + row_off;
-            if preview.move_notes {
-                self.project.current_pattern_mut().set(ch, row, *cell);
-            }
-            if preview.move_pan {
-                self.project
-                    .current_pattern_mut()
-                    .set_panning(ch, row, *inst);
-            }
-            if preview.move_vol {
-                self.project.current_pattern_mut().set_volume(ch, row, *vol);
-            }
-            if preview.move_fx {
-                self.project.current_pattern_mut().set_effect(ch, row, *fx);
+            if ch < self.project.current_pattern().channels
+                && *v < self.project.current_pattern().voice_count(ch)
+                && row < self.project.current_pattern().rows
+            {
+                self.project.current_pattern_mut().set(ch, *v, row, *cell);
             }
         }
         self.cursor.selection_anchor = Some(preview.origin_anchor);
         self.cursor.channel = orig_ch;
+        self.cursor.voice = orig_voice;
         self.cursor.row = orig_row;
-        self.cursor.sub_column = orig_sub;
     }
 
     fn handle_cursor_and_select(&mut self, actions: &[Action]) -> bool {
@@ -437,7 +353,7 @@ impl App {
 
         if select_action.is_some() && self.cursor.selection_anchor.is_none() {
             self.cursor.selection_anchor =
-                Some((self.cursor.channel, self.cursor.row, self.cursor.sub_column));
+                Some((self.cursor.channel, self.cursor.voice, self.cursor.row));
         }
 
         let cursor_action = [
@@ -467,6 +383,8 @@ impl App {
     }
 
     fn move_cursor(&mut self, dir: Action) {
+        let total_channels = self.project.current_pattern().channels;
+
         match dir {
             Action::CursorUp | Action::SelectUp => {
                 if self.cursor.row > 0 {
@@ -482,71 +400,31 @@ impl App {
                     self.cursor.row = 0;
                 }
             }
-            Action::CursorLeft => {
-                if self.cursor.sub_column == SubColumn::Effect {
-                    self.cursor.sub_column = SubColumn::Volume;
-                    self.cursor.volume_edit_pos = 0;
-                } else if self.cursor.sub_column == SubColumn::Volume {
-                    self.cursor.sub_column = SubColumn::Panning;
-                    self.cursor.panning_edit_pos = 0;
-                } else if self.cursor.sub_column == SubColumn::Panning {
-                    self.cursor.sub_column = SubColumn::Note;
+            Action::CursorLeft | Action::SelectLeft => {
+                if self.cursor.voice > 0 {
+                    self.cursor.voice -= 1;
                 } else if self.cursor.channel > 0 {
                     self.cursor.channel -= 1;
-                    self.cursor.sub_column = SubColumn::Effect;
-                    self.cursor.effect_edit_pos = 0;
+                    self.cursor.voice = self
+                        .voices_for_channel(self.cursor.channel)
+                        .saturating_sub(1);
                 } else {
-                    self.cursor.channel = self.project.current_pattern().channels - 1;
-                    self.cursor.sub_column = SubColumn::Effect;
-                    self.cursor.effect_edit_pos = 0;
+                    self.cursor.channel = total_channels - 1;
+                    self.cursor.voice = self
+                        .voices_for_channel(self.cursor.channel)
+                        .saturating_sub(1);
                 }
             }
-            Action::CursorRight => {
-                if self.cursor.sub_column == SubColumn::Note {
-                    self.cursor.sub_column = SubColumn::Panning;
-                    self.cursor.panning_edit_pos = 0;
-                } else if self.cursor.sub_column == SubColumn::Panning {
-                    self.cursor.sub_column = SubColumn::Volume;
-                    self.cursor.volume_edit_pos = 0;
-                } else if self.cursor.sub_column == SubColumn::Volume {
-                    self.cursor.sub_column = SubColumn::Effect;
-                    self.cursor.effect_edit_pos = 0;
-                } else if self.cursor.channel < self.project.current_pattern().channels - 1 {
+            Action::CursorRight | Action::SelectRight => {
+                let voices = self.voices_for_channel(self.cursor.channel);
+                if self.cursor.voice < voices - 1 {
+                    self.cursor.voice += 1;
+                } else if self.cursor.channel < total_channels - 1 {
                     self.cursor.channel += 1;
-                    self.cursor.sub_column = SubColumn::Note;
+                    self.cursor.voice = 0;
                 } else {
                     self.cursor.channel = 0;
-                    self.cursor.sub_column = SubColumn::Note;
-                }
-            }
-            Action::SelectLeft => {
-                if self.cursor.sub_column == SubColumn::Effect {
-                    self.cursor.sub_column = SubColumn::Volume;
-                } else if self.cursor.sub_column == SubColumn::Volume {
-                    self.cursor.sub_column = SubColumn::Panning;
-                } else if self.cursor.sub_column == SubColumn::Panning {
-                    self.cursor.sub_column = SubColumn::Note;
-                } else if self.cursor.channel > 0 {
-                    self.cursor.channel -= 1;
-                    self.cursor.sub_column = SubColumn::Effect;
-                } else {
-                    self.cursor.channel = self.project.current_pattern().channels - 1;
-                    self.cursor.sub_column = SubColumn::Effect;
-                }
-            }
-            Action::SelectRight => {
-                if self.cursor.sub_column == SubColumn::Note {
-                    self.cursor.sub_column = SubColumn::Panning;
-                } else if self.cursor.sub_column == SubColumn::Panning {
-                    self.cursor.sub_column = SubColumn::Volume;
-                } else if self.cursor.sub_column == SubColumn::Volume {
-                    self.cursor.sub_column = SubColumn::Effect;
-                } else if self.cursor.channel < self.project.current_pattern().channels - 1 {
-                    self.cursor.channel += 1;
-                    self.cursor.sub_column = SubColumn::Note;
-                } else {
-                    self.cursor.channel = 0;
-                    self.cursor.sub_column = SubColumn::Note;
+                    self.cursor.voice = 0;
                 }
             }
             _ => {}
@@ -554,153 +432,46 @@ impl App {
     }
 
     fn handle_delete(&mut self) {
-        if let Some((min_ch, max_ch, min_row, max_row, min_sub, max_sub)) = self.selection_bounds()
-        {
+        if let Some((min_ch, max_ch, _, _, min_row, max_row)) = self.selection_bounds() {
             for ch in min_ch..=max_ch {
-                for row in min_row..=max_row {
-                    let flat_note = ch * 4 + SubColumn::Note as usize;
-                    let flat_inst = ch * 4 + SubColumn::Panning as usize;
-                    let flat_vol = ch * 4 + SubColumn::Volume as usize;
-                    let flat_fx = ch * 4 + SubColumn::Effect as usize;
-                    let sel_start = min_ch * 4 + min_sub as usize;
-                    let sel_end = max_ch * 4 + max_sub as usize;
-
-                    if flat_note >= sel_start && flat_note <= sel_end {
-                        self.project.current_pattern_mut().clear(ch, row);
-                    }
-                    if flat_inst >= sel_start && flat_inst <= sel_end {
-                        self.project.current_pattern_mut().clear_panning(ch, row);
-                    }
-                    if flat_vol >= sel_start && flat_vol <= sel_end {
-                        self.project.current_pattern_mut().clear_volume(ch, row);
-                    }
-                    if flat_fx >= sel_start && flat_fx <= sel_end {
-                        self.project.current_pattern_mut().clear_effect(ch, row);
+                let voices = self.project.current_pattern().voice_count(ch);
+                for v in 0..voices {
+                    for row in min_row..=max_row {
+                        self.project.current_pattern_mut().clear(ch, v, row);
                     }
                 }
             }
             self.clear_selection();
         } else {
-            match self.cursor.sub_column {
-                SubColumn::Note => {
-                    self.project
-                        .current_pattern_mut()
-                        .clear(self.cursor.channel, self.cursor.row);
-                }
-                SubColumn::Panning => {
-                    self.project
-                        .current_pattern_mut()
-                        .clear_panning(self.cursor.channel, self.cursor.row);
-                }
-                SubColumn::Volume => {
-                    self.project
-                        .current_pattern_mut()
-                        .clear_volume(self.cursor.channel, self.cursor.row);
-                }
-                SubColumn::Effect => {
-                    self.project
-                        .current_pattern_mut()
-                        .clear_effect(self.cursor.channel, self.cursor.row);
-                }
-            }
+            self.project.current_pattern_mut().clear(
+                self.cursor.channel,
+                self.cursor.voice,
+                self.cursor.row,
+            );
             self.cursor.row = self.cursor.row.wrapping_sub(1) % self.project.current_pattern().rows;
         }
     }
 
     fn handle_copy(&mut self) {
-        let (min_ch, max_ch, min_row, max_row, min_sub, max_sub) =
-            self.selection_bounds().unwrap_or((
-                self.cursor.channel,
-                self.cursor.channel,
-                self.cursor.row,
-                self.cursor.row,
-                self.cursor.sub_column,
-                self.cursor.sub_column,
-            ));
+        let (min_ch, max_ch, _, _, min_row, max_row) = self.selection_bounds().unwrap_or((
+            self.cursor.channel,
+            self.cursor.channel,
+            self.cursor.voice,
+            self.cursor.voice,
+            self.cursor.row,
+            self.cursor.row,
+        ));
         let pat = self.project.current_pattern();
 
-        if min_sub != max_sub || min_ch != max_ch {
-            let sel_start = min_ch * 4 + min_sub as usize;
-            let sel_end = max_ch * 4 + max_sub as usize;
-
-            let has_sub = |sub: SubColumn| -> bool {
-                (min_ch..=max_ch).any(|ch| {
-                    let flat = ch * 4 + sub as usize;
-                    flat >= sel_start && flat <= sel_end
-                })
-            };
-
-            let notes = if has_sub(SubColumn::Note) {
-                Some(
-                    (min_ch..=max_ch)
-                        .map(|ch| (min_row..=max_row).map(|r| pat.data[ch][r]).collect())
-                        .collect(),
-                )
-            } else {
-                None
-            };
-            let panning_data = if has_sub(SubColumn::Panning) {
-                Some(
-                    (min_ch..=max_ch)
-                        .map(|ch| (min_row..=max_row).map(|r| pat.panning[ch][r]).collect())
-                        .collect(),
-                )
-            } else {
-                None
-            };
-            let volumes = if has_sub(SubColumn::Volume) {
-                Some(
-                    (min_ch..=max_ch)
-                        .map(|ch| (min_row..=max_row).map(|r| pat.volumes[ch][r]).collect())
-                        .collect(),
-                )
-            } else {
-                None
-            };
-            let effects = if has_sub(SubColumn::Effect) {
-                Some(
-                    (min_ch..=max_ch)
-                        .map(|ch| (min_row..=max_row).map(|r| pat.effects[ch][r]).collect())
-                        .collect(),
-                )
-            } else {
-                None
-            };
-            self.clipboard = Some(ClipboardData::Full {
-                notes,
-                panning: panning_data,
-                volumes,
-                effects,
-            });
-            return;
-        }
-
-        self.clipboard = Some(match min_sub {
-            SubColumn::Note => {
-                let data: Vec<Vec<Cell>> = (min_ch..=max_ch)
-                    .map(|ch| (min_row..=max_row).map(|r| pat.data[ch][r]).collect())
-                    .collect();
-                ClipboardData::Notes(data)
-            }
-            SubColumn::Panning => {
-                let data: Vec<Vec<Option<u8>>> = (min_ch..=max_ch)
-                    .map(|ch| (min_row..=max_row).map(|r| pat.panning[ch][r]).collect())
-                    .collect();
-                ClipboardData::Panning(data)
-            }
-            SubColumn::Volume => {
-                let data: Vec<Vec<Option<u8>>> = (min_ch..=max_ch)
-                    .map(|ch| (min_row..=max_row).map(|r| pat.volumes[ch][r]).collect())
-                    .collect();
-                ClipboardData::Volumes(data)
-            }
-            SubColumn::Effect => {
-                let data: Vec<Vec<Option<Effect>>> = (min_ch..=max_ch)
-                    .map(|ch| (min_row..=max_row).map(|r| pat.effects[ch][r]).collect())
-                    .collect();
-                ClipboardData::Effects(data)
-            }
-        });
+        let data: Vec<Vec<Vec<Cell>>> = (min_ch..=max_ch)
+            .map(|ch| {
+                let voices = pat.voice_count(ch);
+                (0..voices)
+                    .map(|v| (min_row..=max_row).map(|r| pat.data[ch][v][r]).collect())
+                    .collect()
+            })
+            .collect();
+        self.clipboard = Some(ClipboardData::Notes(data));
     }
 
     fn handle_paste(&mut self) {
@@ -715,112 +486,21 @@ impl App {
 
         match clip {
             ClipboardData::Notes(data) => {
-                for (ci, col) in data.iter().enumerate() {
+                for (ci, ch_data) in data.iter().enumerate() {
                     let ch = ch_start + ci;
                     if ch >= pat.channels {
                         break;
                     }
-                    for (ri, &cell) in col.iter().enumerate() {
-                        let row = row_start + ri;
-                        if row >= pat.rows {
+                    for (vi, voice_data) in ch_data.iter().enumerate() {
+                        if vi >= pat.data[ch].len() {
                             break;
                         }
-                        pat.data[ch][row] = cell;
-                    }
-                }
-            }
-            ClipboardData::Panning(data) => {
-                for (ci, col) in data.iter().enumerate() {
-                    let ch = ch_start + ci;
-                    if ch >= pat.channels {
-                        break;
-                    }
-                    for (ri, &val) in col.iter().enumerate() {
-                        let row = row_start + ri;
-                        if row >= pat.rows {
-                            break;
-                        }
-                        pat.panning[ch][row] = val;
-                    }
-                }
-            }
-            ClipboardData::Volumes(data) => {
-                for (ci, col) in data.iter().enumerate() {
-                    let ch = ch_start + ci;
-                    if ch >= pat.channels {
-                        break;
-                    }
-                    for (ri, &val) in col.iter().enumerate() {
-                        let row = row_start + ri;
-                        if row >= pat.rows {
-                            break;
-                        }
-                        pat.volumes[ch][row] = val;
-                    }
-                }
-            }
-            ClipboardData::Effects(data) => {
-                for (ci, col) in data.iter().enumerate() {
-                    let ch = ch_start + ci;
-                    if ch >= pat.channels {
-                        break;
-                    }
-                    for (ri, &val) in col.iter().enumerate() {
-                        let row = row_start + ri;
-                        if row >= pat.rows {
-                            break;
-                        }
-                        pat.effects[ch][row] = val;
-                    }
-                }
-            }
-            ClipboardData::Full {
-                notes,
-                panning: panning_data,
-                volumes,
-                effects,
-            } => {
-                let num_ch = notes
-                    .as_ref()
-                    .map(|v| v.len())
-                    .or_else(|| panning_data.as_ref().map(|v| v.len()))
-                    .or_else(|| volumes.as_ref().map(|v| v.len()))
-                    .or_else(|| effects.as_ref().map(|v| v.len()))
-                    .unwrap_or(0);
-                let num_rows = notes
-                    .as_ref()
-                    .and_then(|v| v.first())
-                    .map(|c| c.len())
-                    .or_else(|| {
-                        panning_data
-                            .as_ref()
-                            .and_then(|v| v.first())
-                            .map(|c| c.len())
-                    })
-                    .or_else(|| volumes.as_ref().and_then(|v| v.first()).map(|c| c.len()))
-                    .or_else(|| effects.as_ref().and_then(|v| v.first()).map(|c| c.len()))
-                    .unwrap_or(0);
-                for ci in 0..num_ch {
-                    let ch = ch_start + ci;
-                    if ch >= pat.channels {
-                        break;
-                    }
-                    for ri in 0..num_rows {
-                        let row = row_start + ri;
-                        if row >= pat.rows {
-                            break;
-                        }
-                        if let Some(ref n) = notes {
-                            pat.data[ch][row] = n[ci][ri];
-                        }
-                        if let Some(ref pan) = panning_data {
-                            pat.panning[ch][row] = pan[ci][ri];
-                        }
-                        if let Some(ref vol) = volumes {
-                            pat.volumes[ch][row] = vol[ci][ri];
-                        }
-                        if let Some(ref fx) = effects {
-                            pat.effects[ch][row] = fx[ci][ri];
+                        for (ri, &cell) in voice_data.iter().enumerate() {
+                            let row = row_start + ri;
+                            if row >= pat.rows {
+                                break;
+                            }
+                            pat.data[ch][vi][row] = cell;
                         }
                     }
                 }
@@ -830,9 +510,12 @@ impl App {
 
     fn handle_note_off(&mut self) {
         self.clear_selection();
-        self.project
-            .current_pattern_mut()
-            .set(self.cursor.channel, self.cursor.row, Cell::NoteOff);
+        self.project.current_pattern_mut().set(
+            self.cursor.channel,
+            self.cursor.voice,
+            self.cursor.row,
+            Cell::NoteOff,
+        );
         self.advance_cursor();
     }
 
@@ -849,22 +532,25 @@ impl App {
             return false;
         };
 
-        let (min_ch, max_ch, min_row, max_row, _, _) = self.selection_bounds().unwrap_or((
+        let (min_ch, max_ch, _, _, min_row, max_row) = self.selection_bounds().unwrap_or((
             self.cursor.channel,
             self.cursor.channel,
+            self.cursor.voice,
+            self.cursor.voice,
             self.cursor.row,
             self.cursor.row,
-            self.cursor.sub_column,
-            self.cursor.sub_column,
         ));
 
         let mut min_pitch: Option<u8> = None;
         let mut max_pitch: Option<u8> = None;
         for ch in min_ch..=max_ch {
-            for row in min_row..=max_row {
-                if let Cell::NoteOn(note) = self.project.current_pattern().get(ch, row) {
-                    min_pitch = Some(min_pitch.map_or(note.pitch, |p: u8| p.min(note.pitch)));
-                    max_pitch = Some(max_pitch.map_or(note.pitch, |p: u8| p.max(note.pitch)));
+            let voices = self.project.current_pattern().voice_count(ch);
+            for v in 0..voices {
+                for row in min_row..=max_row {
+                    if let Cell::NoteOn(note) = self.project.current_pattern().get(ch, v, row) {
+                        min_pitch = Some(min_pitch.map_or(note.pitch, |p: u8| p.min(note.pitch)));
+                        max_pitch = Some(max_pitch.map_or(note.pitch, |p: u8| p.max(note.pitch)));
+                    }
                 }
             }
         }
@@ -878,14 +564,18 @@ impl App {
         if can_transpose {
             self.save_undo_snapshot();
             for ch in min_ch..=max_ch {
-                for row in min_row..=max_row {
-                    if let Cell::NoteOn(note) = self.project.current_pattern().get(ch, row) {
-                        let new_pitch = u8::try_from(i16::from(note.pitch) + delta).unwrap();
-                        self.project.current_pattern_mut().set(
-                            ch,
-                            row,
-                            Cell::NoteOn(crate::project::Note::new(new_pitch)),
-                        );
+                let voices = self.project.current_pattern().voice_count(ch);
+                for v in 0..voices {
+                    for row in min_row..=max_row {
+                        if let Cell::NoteOn(note) = self.project.current_pattern().get(ch, v, row) {
+                            let new_pitch = u8::try_from(i16::from(note.pitch) + delta).unwrap();
+                            self.project.current_pattern_mut().set(
+                                ch,
+                                v,
+                                row,
+                                Cell::NoteOn(crate::project::Note::new(new_pitch)),
+                            );
+                        }
                     }
                 }
             }
@@ -896,82 +586,25 @@ impl App {
 
     fn handle_fill(&mut self, ascending: bool) {
         let ch = self.cursor.channel;
+        let v = self.cursor.voice;
         let start_row = self.cursor.row;
         let total_rows = self.project.current_pattern().rows;
 
-        match self.cursor.sub_column {
-            SubColumn::Note => {
-                let cell = self.project.current_pattern().get(ch, start_row);
-                if let Cell::NoteOn(note) = cell {
-                    let mut pitch = i16::from(note.pitch);
-                    for row in (start_row + 1)..total_rows {
-                        if self.project.current_pattern().get(ch, row) != Cell::Empty {
-                            break;
-                        }
-                        pitch += if ascending { 1 } else { -1 };
-                        let clamped = pitch.clamp(0, 127) as u8;
-                        self.project.current_pattern_mut().set(
-                            ch,
-                            row,
-                            Cell::NoteOn(Note::new(clamped)),
-                        );
-                    }
+        let cell = self.project.current_pattern().get(ch, v, start_row);
+        if let Cell::NoteOn(note) = cell {
+            let mut pitch = i16::from(note.pitch);
+            for row in (start_row + 1)..total_rows {
+                if self.project.current_pattern().get(ch, v, row) != Cell::Empty {
+                    break;
                 }
-            }
-            SubColumn::Panning => {
-                if let Some(inst) = self.project.current_pattern().get_panning(ch, start_row) {
-                    let mut val = i16::from(inst);
-                    for row in (start_row + 1)..total_rows {
-                        if self
-                            .project
-                            .current_pattern()
-                            .get_panning(ch, row)
-                            .is_some()
-                        {
-                            break;
-                        }
-                        val += if ascending { 1 } else { -1 };
-                        let clamped = val.clamp(0, 0xFF) as u8;
-                        self.project
-                            .current_pattern_mut()
-                            .set_panning(ch, row, Some(clamped));
-                    }
-                }
-            }
-            SubColumn::Volume => {
-                if let Some(vol) = self.project.current_pattern().get_volume(ch, start_row) {
-                    let mut val = i16::from(vol);
-                    for row in (start_row + 1)..total_rows {
-                        if self.project.current_pattern().get_volume(ch, row).is_some() {
-                            break;
-                        }
-                        val += if ascending { 1 } else { -1 };
-                        let clamped = val.clamp(0, 0xFF) as u8;
-                        self.project
-                            .current_pattern_mut()
-                            .set_volume(ch, row, Some(clamped));
-                    }
-                }
-            }
-            SubColumn::Effect => {
-                if let Some(fx) = self.project.current_pattern().get_effect(ch, start_row) {
-                    let mut param = i16::from(fx.param);
-                    for row in (start_row + 1)..total_rows {
-                        if self.project.current_pattern().get_effect(ch, row).is_some() {
-                            break;
-                        }
-                        param += if ascending { 1 } else { -1 };
-                        let clamped = param.clamp(0, 0xFF) as u8;
-                        self.project.current_pattern_mut().set_effect(
-                            ch,
-                            row,
-                            Some(Effect {
-                                kind: fx.kind,
-                                param: clamped,
-                            }),
-                        );
-                    }
-                }
+                pitch += if ascending { 1 } else { -1 };
+                let clamped = pitch.clamp(0, 127) as u8;
+                self.project.current_pattern_mut().set(
+                    ch,
+                    v,
+                    row,
+                    Cell::NoteOn(Note::new(clamped)),
+                );
             }
         }
     }
@@ -1012,27 +645,11 @@ impl App {
                 if let Some(note) =
                     key_to_note(k, self.cursor.octave, scale, self.project.transpose)
                 {
-                    let track_idx = self
-                        .current_track
-                        .min(self.project.tracks.len().saturating_sub(1));
-                    let track = &self.project.tracks[track_idx];
-                    let pan_hex = (track.default_panning * 255.0).round() as u8;
-                    let vol_hex = (track.default_volume * 255.0).round() as u8;
-
                     self.project.current_pattern_mut().set(
                         self.cursor.channel,
+                        self.cursor.voice,
                         self.cursor.row,
                         Cell::NoteOn(note),
-                    );
-                    self.project.current_pattern_mut().set_panning(
-                        self.cursor.channel,
-                        self.cursor.row,
-                        Some(pan_hex),
-                    );
-                    self.project.current_pattern_mut().set_volume(
-                        self.cursor.channel,
-                        self.cursor.row,
-                        Some(vol_hex),
                     );
                     if !self.playback.playing {
                         self.audio.preview_note(
@@ -1043,7 +660,17 @@ impl App {
                         );
                     }
                     self.clear_selection();
-                    self.advance_cursor();
+                    if self.poly_input {
+                        let voices = self.voices_for_channel(self.cursor.channel);
+                        if self.cursor.voice + 1 < voices {
+                            self.cursor.voice += 1;
+                        } else {
+                            self.cursor.voice = 0;
+                            self.advance_cursor();
+                        }
+                    } else {
+                        self.advance_cursor();
+                    }
                 }
                 break;
             }
@@ -1057,166 +684,6 @@ impl App {
             self.cursor.row += self.project.step;
         } else {
             self.cursor.row = self.project.current_pattern().rows - 1;
-        }
-    }
-
-    fn handle_effect_keys(&mut self, input: &egui::InputState) {
-        let hex_keys = [
-            (Key::Num0, 0x0),
-            (Key::Num1, 0x1),
-            (Key::Num2, 0x2),
-            (Key::Num3, 0x3),
-            (Key::Num4, 0x4),
-            (Key::Num5, 0x5),
-            (Key::Num6, 0x6),
-            (Key::Num7, 0x7),
-            (Key::Num8, 0x8),
-            (Key::Num9, 0x9),
-            (Key::A, 0xA),
-            (Key::B, 0xB),
-            (Key::C, 0xC),
-            (Key::D, 0xD),
-            (Key::E, 0xE),
-            (Key::F, 0xF),
-        ];
-
-        for &(key, value) in &hex_keys {
-            if input.key_pressed(key) {
-                let ch = self.cursor.channel;
-                let row = self.cursor.row;
-                let pos = self.cursor.effect_edit_pos;
-
-                let mut fx = self
-                    .project
-                    .current_pattern()
-                    .get_effect(ch, row)
-                    .unwrap_or(crate::project::Effect { kind: 0, param: 0 });
-
-                match pos {
-                    0 => fx.kind = value,
-                    1 => fx.param = (fx.param & 0x0F) | (value << 4),
-                    _ => fx.param = (fx.param & 0xF0) | value,
-                }
-
-                self.project
-                    .current_pattern_mut()
-                    .set_effect(ch, row, Some(fx));
-
-                if pos < 2 {
-                    self.cursor.effect_edit_pos = pos + 1;
-                } else {
-                    self.cursor.effect_edit_pos = 0;
-                    self.clear_selection();
-                    self.advance_cursor();
-                }
-                break;
-            }
-        }
-    }
-
-    fn handle_volume_keys(&mut self, input: &egui::InputState) {
-        let hex_keys = [
-            (Key::Num0, 0x0),
-            (Key::Num1, 0x1),
-            (Key::Num2, 0x2),
-            (Key::Num3, 0x3),
-            (Key::Num4, 0x4),
-            (Key::Num5, 0x5),
-            (Key::Num6, 0x6),
-            (Key::Num7, 0x7),
-            (Key::Num8, 0x8),
-            (Key::Num9, 0x9),
-            (Key::A, 0xA),
-            (Key::B, 0xB),
-            (Key::C, 0xC),
-            (Key::D, 0xD),
-            (Key::E, 0xE),
-            (Key::F, 0xF),
-        ];
-
-        for &(key, value) in &hex_keys {
-            if input.key_pressed(key) {
-                let ch = self.cursor.channel;
-                let row = self.cursor.row;
-                let pos = self.cursor.volume_edit_pos;
-
-                let mut vol = self
-                    .project
-                    .current_pattern()
-                    .get_volume(ch, row)
-                    .unwrap_or(0);
-
-                match pos {
-                    0 => vol = (value << 4) | (vol & 0x0F),
-                    _ => vol = (vol & 0xF0) | value,
-                }
-
-                self.project
-                    .current_pattern_mut()
-                    .set_volume(ch, row, Some(vol));
-
-                if pos < 1 {
-                    self.cursor.volume_edit_pos = pos + 1;
-                } else {
-                    self.cursor.volume_edit_pos = 0;
-                    self.clear_selection();
-                    self.advance_cursor();
-                }
-                break;
-            }
-        }
-    }
-
-    fn handle_panning_keys(&mut self, input: &egui::InputState) {
-        let hex_keys = [
-            (Key::Num0, 0x0),
-            (Key::Num1, 0x1),
-            (Key::Num2, 0x2),
-            (Key::Num3, 0x3),
-            (Key::Num4, 0x4),
-            (Key::Num5, 0x5),
-            (Key::Num6, 0x6),
-            (Key::Num7, 0x7),
-            (Key::Num8, 0x8),
-            (Key::Num9, 0x9),
-            (Key::A, 0xA),
-            (Key::B, 0xB),
-            (Key::C, 0xC),
-            (Key::D, 0xD),
-            (Key::E, 0xE),
-            (Key::F, 0xF),
-        ];
-
-        for &(key, value) in &hex_keys {
-            if input.key_pressed(key) {
-                let ch = self.cursor.channel;
-                let row = self.cursor.row;
-                let pos = self.cursor.panning_edit_pos;
-
-                let mut inst = self
-                    .project
-                    .current_pattern()
-                    .get_panning(ch, row)
-                    .unwrap_or(0);
-
-                match pos {
-                    0 => inst = (value << 4) | (inst & 0x0F),
-                    _ => inst = (inst & 0xF0) | value,
-                }
-
-                self.project
-                    .current_pattern_mut()
-                    .set_panning(ch, row, Some(inst));
-
-                if pos < 1 {
-                    self.cursor.panning_edit_pos = pos + 1;
-                } else {
-                    self.cursor.panning_edit_pos = 0;
-                    self.clear_selection();
-                    self.advance_cursor();
-                }
-                break;
-            }
         }
     }
 }

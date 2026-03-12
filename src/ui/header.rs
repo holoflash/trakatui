@@ -220,6 +220,30 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                         }
                     });
 
+                ui.add_space(8.0);
+
+                let poly_label = if app.poly_input { "POLY" } else { "MONO" };
+                let poly_color = if app.poly_input {
+                    COLOR_ACCENT
+                } else {
+                    COLOR_TEXT_DIM
+                };
+                let poly_btn = ui
+                    .add(
+                        egui::Button::new(
+                            RichText::new(poly_label)
+                                .font(FontId::monospace(10.0))
+                                .color(poly_color),
+                        )
+                        .fill(COLOR_LAYOUT_BG_PANEL)
+                        .stroke(Stroke::new(1.0, poly_color)),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::PointingHand);
+                poly_btn.surrender_focus();
+                if poly_btn.clicked() {
+                    app.poly_input = !app.poly_input;
+                }
+
                 draw_field(ui, "STEP");
                 let r = ui
                     .add(

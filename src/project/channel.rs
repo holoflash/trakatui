@@ -198,10 +198,16 @@ pub struct Track {
     pub pitch_envelope: VolEnvelope,
     #[serde(default)]
     pub filter: FilterSettings,
+    #[serde(default = "default_polyphony")]
+    pub polyphony: u8,
 }
 
 fn default_pitch_env_depth() -> f32 {
     12.0
+}
+
+fn default_polyphony() -> u8 {
+    1
 }
 
 impl Track {
@@ -238,6 +244,7 @@ impl Track {
             pitch_env_depth: 12.0,
             pitch_envelope: VolEnvelope::disabled(),
             filter: FilterSettings::default(),
+            polyphony: 1,
         }
     }
 }

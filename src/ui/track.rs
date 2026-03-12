@@ -267,6 +267,22 @@ fn draw_basic_fields(ui: &mut egui::Ui, app: &mut App, inst_idx: usize) {
             app.project.tracks[inst_idx].sample_data = selected.generate();
         }
     });
+    ui.add_space(4.0);
+
+    ui.horizontal(|ui| {
+        field_label(ui, "POLYPHONY");
+        let mut poly = app.project.tracks[inst_idx].polyphony;
+        let drag = egui::DragValue::new(&mut poly).range(1..=8).speed(0.05);
+        let response = ui.add(drag);
+        if response.changed() {
+            app.project.tracks[inst_idx].polyphony = poly;
+            for pat in &mut app.project.patterns {
+                if inst_idx < pat.channels {
+                    pat.set_voice_count(inst_idx, poly as usize);
+                }
+            }
+        }
+    });
 }
 
 fn draw_loop_controls(ui: &mut egui::Ui, app: &mut App, inst_idx: usize) {
@@ -351,10 +367,12 @@ fn draw_scope(ui: &mut egui::Ui, app: &App, inst_idx: usize) {
         }
     }
 
-    // center line
     let mid_y = rect.min.y + height * 0.5;
     painter.line_segment(
-        [Pos2::new(rect.left(), mid_y), Pos2::new(rect.right(), mid_y)],
+        [
+            Pos2::new(rect.left(), mid_y),
+            Pos2::new(rect.right(), mid_y),
+        ],
         Stroke::new(0.5, egui::Color32::from_rgba_premultiplied(80, 70, 90, 40)),
     );
 }
@@ -499,29 +517,31 @@ fn draw_interactive_waveform(ui: &mut egui::Ui, app: &mut App, inst_idx: usize) 
             if let Some((dist, drag_kind)) = candidates
                 .iter()
                 .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap())
-                && *dist <= handle_grab_radius {
-                    app.dragging_waveform = Some(*drag_kind);
-                }
+                && *dist <= handle_grab_radius
+            {
+                app.dragging_waveform = Some(*drag_kind);
+            }
         }
     }
 
     if response.dragged()
         && let Some(drag_kind) = app.dragging_waveform
-            && let Some(pointer) = response.interact_pointer_pos() {
-                let sample_pos = x_to_sample(pointer.x);
-                let sd = Arc::make_mut(&mut app.project.tracks[inst_idx].sample_data);
-                let total = sd.samples_i16.len();
-                match drag_kind {
-                    WaveformDrag::RegionStart => {
-                        let new_start = sample_pos.min(sd.region_end.saturating_sub(64));
-                        sd.region_start = new_start;
-                    }
-                    WaveformDrag::RegionEnd => {
-                        let new_end = sample_pos.clamp(sd.region_start + 64, total);
-                        sd.region_end = new_end;
-                    }
-                }
+        && let Some(pointer) = response.interact_pointer_pos()
+    {
+        let sample_pos = x_to_sample(pointer.x);
+        let sd = Arc::make_mut(&mut app.project.tracks[inst_idx].sample_data);
+        let total = sd.samples_i16.len();
+        match drag_kind {
+            WaveformDrag::RegionStart => {
+                let new_start = sample_pos.min(sd.region_end.saturating_sub(64));
+                sd.region_start = new_start;
             }
+            WaveformDrag::RegionEnd => {
+                let new_end = sample_pos.clamp(sd.region_start + 64, total);
+                sd.region_end = new_end;
+            }
+        }
+    }
 
     if response.drag_stopped() {
         app.dragging_waveform = None;
@@ -530,14 +550,15 @@ fn draw_interactive_waveform(ui: &mut egui::Ui, app: &mut App, inst_idx: usize) 
     if app.dragging_waveform.is_some() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
     } else if let Some(pointer) = ui.input(|i| i.pointer.hover_pos())
-        && rect.contains(pointer) {
-            let near_handle = [(pointer.x - rs_x).abs(), (pointer.x - re_x).abs()]
-                .iter()
-                .any(|d| *d <= handle_grab_radius);
-            if near_handle {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-            }
+        && rect.contains(pointer)
+    {
+        let near_handle = [(pointer.x - rs_x).abs(), (pointer.x - re_x).abs()]
+            .iter()
+            .any(|d| *d <= handle_grab_radius);
+        if near_handle {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
         }
+    }
 
     if response.double_clicked() {
         load_sample_dialog(app, inst_idx);
@@ -548,13 +569,14 @@ fn load_sample_dialog(app: &mut App, inst_idx: usize) {
     if let Some(path) = rfd::FileDialog::new()
         .add_filter("Audio", &["wav", "WAV"])
         .pick_file()
-        && let Ok(data) = SampleData::load_from_path(&path) {
-            app.project.tracks[inst_idx].sample_data = data;
-            app.project.tracks[inst_idx].waveform = crate::project::channel::WaveformKind::Sample;
-            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                app.project.tracks[inst_idx].name = stem.to_string();
-            }
+        && let Ok(data) = SampleData::load_from_path(&path)
+    {
+        app.project.tracks[inst_idx].sample_data = data;
+        app.project.tracks[inst_idx].waveform = crate::project::channel::WaveformKind::Sample;
+        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+            app.project.tracks[inst_idx].name = stem.to_string();
         }
+    }
 }
 
 fn draw_vol_envelope_section(ui: &mut egui::Ui, app: &mut App, inst_idx: usize) {
@@ -868,49 +890,51 @@ fn draw_envelope_editor(
     let num_points = env.points.len();
 
     if response.drag_started()
-        && let Some(pointer) = response.interact_pointer_pos() {
-            let mut best = None;
-            let mut best_dist = f32::MAX;
-            for (i, &pos) in points_pos.iter().enumerate() {
-                let d = pos.distance(pointer);
-                if d < best_dist {
-                    best_dist = d;
-                    best = Some(i);
-                }
-            }
-            if best_dist <= 12.0 {
-                *dragging_point = best;
-                if let Some(idx) = best {
-                    *point_idx = idx;
-                }
+        && let Some(pointer) = response.interact_pointer_pos()
+    {
+        let mut best = None;
+        let mut best_dist = f32::MAX;
+        for (i, &pos) in points_pos.iter().enumerate() {
+            let d = pos.distance(pointer);
+            if d < best_dist {
+                best_dist = d;
+                best = Some(i);
             }
         }
+        if best_dist <= 12.0 {
+            *dragging_point = best;
+            if let Some(idx) = best {
+                *point_idx = idx;
+            }
+        }
+    }
 
     if response.dragged()
         && let Some(idx) = *dragging_point
-            && let Some(pointer) = response.interact_pointer_pos() {
-                let (raw_tick, raw_val) = from_pos(pointer);
+        && let Some(pointer) = response.interact_pointer_pos()
+    {
+        let (raw_tick, raw_val) = from_pos(pointer);
 
-                let min_tick = if idx > 0 {
-                    env.points[idx - 1].0 + 1
-                } else {
-                    0
-                };
-                let max_tick_pt = if idx + 1 < num_points {
-                    env.points[idx + 1].0 - 1
-                } else {
-                    9999
-                };
+        let min_tick = if idx > 0 {
+            env.points[idx - 1].0 + 1
+        } else {
+            0
+        };
+        let max_tick_pt = if idx + 1 < num_points {
+            env.points[idx + 1].0 - 1
+        } else {
+            9999
+        };
 
-                let tick = if idx == 0 {
-                    0
-                } else {
-                    raw_tick.clamp(min_tick, max_tick_pt)
-                };
-                let val = raw_val.min(64);
+        let tick = if idx == 0 {
+            0
+        } else {
+            raw_tick.clamp(min_tick, max_tick_pt)
+        };
+        let val = raw_val.min(64);
 
-                env.points[idx] = (tick, val);
-            }
+        env.points[idx] = (tick, val);
+    }
 
     if response.drag_stopped() {
         *dragging_point = None;
@@ -918,79 +942,82 @@ fn draw_envelope_editor(
 
     if response.secondary_clicked()
         && let Some(pointer) = response.interact_pointer_pos()
-            && env.points.len() > 2 {
-                let pts_pos: Vec<Pos2> = env.points.iter().map(|&(t, v)| to_pos(t, v)).collect();
-                if let Some(idx) = pts_pos
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, p)| p.distance(pointer) <= 8.0)
-                    .min_by(|(_, a), (_, b)| {
-                        a.distance(pointer)
-                            .partial_cmp(&b.distance(pointer))
-                            .unwrap()
-                    })
-                    .map(|(i, _)| i)
-                {
-                    env.points.remove(idx);
-                    let new_len = env.points.len();
-                    *point_idx = (*point_idx).min(new_len.saturating_sub(1));
+        && env.points.len() > 2
+    {
+        let pts_pos: Vec<Pos2> = env.points.iter().map(|&(t, v)| to_pos(t, v)).collect();
+        if let Some(idx) = pts_pos
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.distance(pointer) <= 8.0)
+            .min_by(|(_, a), (_, b)| {
+                a.distance(pointer)
+                    .partial_cmp(&b.distance(pointer))
+                    .unwrap()
+            })
+            .map(|(i, _)| i)
+        {
+            env.points.remove(idx);
+            let new_len = env.points.len();
+            *point_idx = (*point_idx).min(new_len.saturating_sub(1));
 
-                    if let Some(sp) = env.sustain_point {
-                        if sp == idx {
-                            env.sustain_point = None;
-                        } else if sp > idx {
-                            env.sustain_point = Some(sp - 1);
-                        }
-                    }
-                    if let Some((ls, le)) = env.loop_range {
-                        let new_ls = if ls > idx { ls - 1 } else { ls };
-                        let new_le = if le > idx { le - 1 } else { le };
-                        if new_ls >= new_len || new_le >= new_len {
-                            env.loop_range = None;
-                        } else {
-                            env.loop_range = Some((new_ls, new_le));
-                        }
-                    }
+            if let Some(sp) = env.sustain_point {
+                if sp == idx {
+                    env.sustain_point = None;
+                } else if sp > idx {
+                    env.sustain_point = Some(sp - 1);
                 }
             }
-
-    if response.double_clicked()
-        && let Some(pointer) = response.interact_pointer_pos() {
-            let pts = &env.points;
-            let insert_after = pts
-                .windows(2)
-                .enumerate()
-                .find(|(_, w)| {
-                    let x0 = to_pos(w[0].0, w[0].1).x;
-                    let x1 = to_pos(w[1].0, w[1].1).x;
-                    pointer.x >= x0 && pointer.x <= x1
-                })
-                .map(|(i, _)| i)
-                .unwrap_or(pts.len().saturating_sub(1));
-
-            let (raw_tick, raw_val) = from_pos(pointer);
-            let min_tick = env.points[insert_after].0 + 1;
-            let max_tick = if insert_after + 1 < env.points.len() {
-                env.points[insert_after + 1].0.saturating_sub(1)
-            } else {
-                env.points[insert_after].0 + 16
-            };
-            let tick = raw_tick.clamp(min_tick, max_tick);
-
-            let new_idx = insert_after + 1;
-            env.points.insert(new_idx, (tick, raw_val.min(64)));
-            *point_idx = new_idx;
-
-            if let Some(sp) = env.sustain_point
-                && sp >= new_idx {
-                    env.sustain_point = Some(sp + 1);
-                }
             if let Some((ls, le)) = env.loop_range {
-                let new_ls = if ls >= new_idx { ls + 1 } else { ls };
-                let new_le = if le >= new_idx { le + 1 } else { le };
-                env.loop_range = Some((new_ls, new_le));
+                let new_ls = if ls > idx { ls - 1 } else { ls };
+                let new_le = if le > idx { le - 1 } else { le };
+                if new_ls >= new_len || new_le >= new_len {
+                    env.loop_range = None;
+                } else {
+                    env.loop_range = Some((new_ls, new_le));
+                }
             }
         }
+    }
+
+    if response.double_clicked()
+        && let Some(pointer) = response.interact_pointer_pos()
+    {
+        let pts = &env.points;
+        let insert_after = pts
+            .windows(2)
+            .enumerate()
+            .find(|(_, w)| {
+                let x0 = to_pos(w[0].0, w[0].1).x;
+                let x1 = to_pos(w[1].0, w[1].1).x;
+                pointer.x >= x0 && pointer.x <= x1
+            })
+            .map(|(i, _)| i)
+            .unwrap_or(pts.len().saturating_sub(1));
+
+        let (raw_tick, raw_val) = from_pos(pointer);
+        let min_tick = env.points[insert_after].0 + 1;
+        let max_tick = if insert_after + 1 < env.points.len() {
+            env.points[insert_after + 1].0.saturating_sub(1)
+        } else {
+            env.points[insert_after].0 + 16
+        };
+        let tick = raw_tick.clamp(min_tick, max_tick);
+
+        let new_idx = insert_after + 1;
+        env.points.insert(new_idx, (tick, raw_val.min(64)));
+        *point_idx = new_idx;
+
+        if let Some(sp) = env.sustain_point
+            && sp >= new_idx
+        {
+            env.sustain_point = Some(sp + 1);
+        }
+        if let Some((ls, le)) = env.loop_range {
+            let new_ls = if ls >= new_idx { ls + 1 } else { ls };
+            let new_le = if le >= new_idx { le + 1 } else { le };
+            env.loop_range = Some((new_ls, new_le));
+        }
+    }
 
     let points_pos: Vec<Pos2> = env.points.iter().map(|&(t, v)| to_pos(t, v)).collect();
 
@@ -1033,14 +1060,15 @@ fn draw_envelope_editor(
     let mut hovered_point = None;
     if dragging_point.is_none()
         && let Some(pointer) = ui.input(|i| i.pointer.hover_pos())
-            && rect.contains(pointer) {
-                for (i, &pos) in points_pos.iter().enumerate() {
-                    if pos.distance(pointer) <= 8.0 {
-                        hovered_point = Some(i);
-                        break;
-                    }
-                }
+        && rect.contains(pointer)
+    {
+        for (i, &pos) in points_pos.iter().enumerate() {
+            if pos.distance(pointer) <= 8.0 {
+                hovered_point = Some(i);
+                break;
             }
+        }
+    }
 
     for (i, &pos) in points_pos.iter().enumerate() {
         let is_selected = i == *point_idx;
@@ -1095,13 +1123,15 @@ fn draw_envelope_editor(
                 *point_idx = env.points.len().saturating_sub(1);
             }
             if let Some(sp) = env.sustain_point
-                && sp >= env.points.len() {
-                    env.sustain_point = None;
-                }
+                && sp >= env.points.len()
+            {
+                env.sustain_point = None;
+            }
             if let Some((ls, le)) = env.loop_range
-                && (ls >= env.points.len() || le >= env.points.len()) {
-                    env.loop_range = None;
-                }
+                && (ls >= env.points.len() || le >= env.points.len())
+            {
+                env.loop_range = None;
+            }
         }
     });
     ui.add_space(2.0);

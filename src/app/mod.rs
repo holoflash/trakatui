@@ -8,7 +8,7 @@ use std::sync::Arc;
 use crate::audio::mixer::{SCOPE_SIZE, ScopeBuffer};
 
 use crate::app::keybindings::KeyBindings;
-use crate::project::{Cell, Effect};
+use crate::project::Cell;
 
 use std::sync::atomic::{AtomicU32, AtomicUsize};
 
@@ -20,48 +20,24 @@ pub enum Mode {
     Edit,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SubColumn {
-    Note,
-    Panning,
-    Volume,
-    Effect,
-}
-
 #[derive(Clone)]
 pub enum ClipboardData {
-    Notes(Vec<Vec<Cell>>),
-    Panning(Vec<Vec<Option<u8>>>),
-    Volumes(Vec<Vec<Option<u8>>>),
-    Effects(Vec<Vec<Option<Effect>>>),
-    Full {
-        notes: Option<Vec<Vec<Cell>>>,
-        panning: Option<Vec<Vec<Option<u8>>>>,
-        volumes: Option<Vec<Vec<Option<u8>>>>,
-        effects: Option<Vec<Vec<Option<Effect>>>>,
-    },
+    Notes(Vec<Vec<Vec<Cell>>>),
 }
 
 pub struct MovePreview {
     #[allow(clippy::type_complexity)]
-    pub cells: Vec<(usize, usize, Cell, Option<u8>, Option<u8>, Option<Effect>)>,
-    pub origin_anchor: (usize, usize, SubColumn),
-    pub origin_cursor: (usize, usize, SubColumn),
-    pub move_notes: bool,
-    pub move_pan: bool,
-    pub move_vol: bool,
-    pub move_fx: bool,
+    pub cells: Vec<(usize, usize, usize, Cell)>,
+    pub origin_anchor: (usize, usize, usize),
+    pub origin_cursor: (usize, usize, usize),
 }
 
 pub struct Cursor {
     pub channel: usize,
+    pub voice: usize,
     pub row: usize,
-    pub sub_column: SubColumn,
-    pub effect_edit_pos: usize,
-    pub volume_edit_pos: usize,
-    pub panning_edit_pos: usize,
-    pub selection_anchor: Option<(usize, usize, SubColumn)>,
     pub octave: u8,
+    pub selection_anchor: Option<(usize, usize, usize)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,6 +85,7 @@ pub struct App {
     pub dragging_pitch_env_point: Option<usize>,
     pub filter_envelope_point_idx: usize,
     pub dragging_filter_env_point: Option<usize>,
+    pub poly_input: bool,
 }
 
 impl App {
@@ -121,13 +98,10 @@ impl App {
             project: Project::new(),
             cursor: Cursor {
                 channel: 0,
+                voice: 0,
                 row: 0,
-                sub_column: SubColumn::Note,
-                effect_edit_pos: 0,
-                volume_edit_pos: 0,
-                panning_edit_pos: 0,
-                selection_anchor: None,
                 octave: 4,
+                selection_anchor: None,
             },
             mode: Mode::Edit,
             playback: playback::PlaybackState::new(),
@@ -165,30 +139,31 @@ impl App {
             dragging_pitch_env_point: None,
             filter_envelope_point_idx: 0,
             dragging_filter_env_point: None,
+            poly_input: false,
         }
     }
 
-    pub fn selection_bounds(&self) -> Option<(usize, usize, usize, usize, SubColumn, SubColumn)> {
-        self.cursor.selection_anchor.map(|(ach, arow, asub)| {
+    pub fn selection_bounds(&self) -> Option<(usize, usize, usize, usize, usize, usize)> {
+        self.cursor.selection_anchor.map(|(ach, avoice, arow)| {
             let min_ch = ach.min(self.cursor.channel);
             let max_ch = ach.max(self.cursor.channel);
+            let min_voice = if ach == self.cursor.channel {
+                avoice.min(self.cursor.voice)
+            } else if ach < self.cursor.channel {
+                avoice
+            } else {
+                self.cursor.voice
+            };
+            let max_voice = if ach == self.cursor.channel {
+                avoice.max(self.cursor.voice)
+            } else if ach > self.cursor.channel {
+                avoice
+            } else {
+                self.cursor.voice
+            };
             let min_row = arow.min(self.cursor.row);
             let max_row = arow.max(self.cursor.row);
-            let (a_flat, b_flat) = (
-                ach * 4 + asub as usize,
-                self.cursor.channel * 4 + self.cursor.sub_column as usize,
-            );
-            let min_sub = if a_flat <= b_flat {
-                asub
-            } else {
-                self.cursor.sub_column
-            };
-            let max_sub = if a_flat >= b_flat {
-                asub
-            } else {
-                self.cursor.sub_column
-            };
-            (min_ch, max_ch, min_row, max_row, min_sub, max_sub)
+            (min_ch, max_ch, min_voice, max_voice, min_row, max_row)
         })
     }
 
@@ -225,11 +200,11 @@ impl App {
         }
     }
 
-    pub fn set_cursor(&mut self, channel: usize, row: usize) {
-        if channel < self.project.current_pattern().channels
-            && row < self.project.current_pattern().rows
-        {
+    pub fn set_cursor(&mut self, channel: usize, voice: usize, row: usize) {
+        let pat = self.project.current_pattern();
+        if channel < pat.channels && row < pat.rows && voice < pat.voice_count(channel) {
             self.cursor.channel = channel;
+            self.cursor.voice = voice;
             self.cursor.row = row;
         }
     }
@@ -302,6 +277,7 @@ impl App {
                     self.project_path = Some(path);
                     self.dirty = false;
                     self.cursor.channel = 0;
+                    self.cursor.voice = 0;
                     self.cursor.row = 0;
                     self.current_track = 0;
                     self.envelope_point_idx = 0;
@@ -328,10 +304,12 @@ impl App {
         self.undo_stack.clear();
         self.redo_stack.clear();
         self.cursor.channel = 0;
+        self.cursor.voice = 0;
         self.cursor.row = 0;
         self.current_track = 0;
         self.envelope_point_idx = 0;
     }
+
     pub fn project_name(&self) -> String {
         self.project_path
             .as_ref()
@@ -348,5 +326,13 @@ impl App {
         } else {
             ""
         }
+    }
+
+    pub fn voices_for_channel(&self, ch: usize) -> usize {
+        self.project
+            .tracks
+            .get(ch)
+            .map(|t| t.polyphony.max(1) as usize)
+            .unwrap_or(1)
     }
 }

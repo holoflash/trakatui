@@ -104,9 +104,7 @@ pub struct PlaybackSettings {
 pub struct PatternSnapshot {
     pub channels: usize,
     pub rows: usize,
-    data: Vec<Vec<Cell>>,
-    panning: Vec<Vec<Option<u8>>>,
-    volumes: Vec<Vec<Option<u8>>>,
+    pub data: Vec<Vec<Vec<Cell>>>,
 }
 
 impl PatternSnapshot {
@@ -115,8 +113,6 @@ impl PatternSnapshot {
             channels: pattern.channels,
             rows: pattern.rows,
             data: pattern.data.clone(),
-            panning: pattern.panning.clone(),
-            volumes: pattern.volumes.clone(),
         }
     }
 }
@@ -132,8 +128,6 @@ struct Channel {
     volume: f32,
     pan_l: f32,
     pan_r: f32,
-    last_volume: Option<u8>,
-    last_panning: Option<u8>,
 
     env_tick: u16,
     cached_env_amp: f32,
@@ -177,8 +171,6 @@ impl Channel {
             volume: 1.0,
             pan_l: 0.5_f32.sqrt(),
             pan_r: 0.5_f32.sqrt(),
-            last_volume: None,
-            last_panning: None,
             env_tick: 0,
             cached_env_amp: 1.0,
             note_released: false,
@@ -492,7 +484,7 @@ impl Channel {
 const PREVIEW_RELEASE_TICKS: u16 = 10;
 
 pub struct TrackerSource {
-    channels: Vec<Channel>,
+    channels: Vec<Vec<Channel>>,
     preview_channel: Channel,
     preview_ticks_remaining: u16,
     playing: bool,
@@ -568,8 +560,10 @@ impl TrackerSource {
                 } => self.start_playback(start_row, start_order, patterns, order, settings),
                 Command::Stop => {
                     self.playing = false;
-                    for ch in &mut self.channels {
-                        *ch = Channel::new();
+                    for track_voices in &mut self.channels {
+                        for ch in track_voices.iter_mut() {
+                            *ch = Channel::new();
+                        }
                     }
                     self.current_row = 0;
                     self.current_order_idx = 0;
@@ -594,6 +588,18 @@ impl TrackerSource {
                         }
                         self.master_volume = settings.master_volume;
                         self.muted_channels = settings.muted_channels.clone();
+
+                        for (i, track) in settings.tracks.iter().enumerate() {
+                            let needed = track.polyphony.max(1) as usize;
+                            if i < self.channels.len() {
+                                while self.channels[i].len() < needed {
+                                    let mut ch = Channel::new();
+                                    ch.set_panning(track.default_panning);
+                                    self.channels[i].push(ch);
+                                }
+                            }
+                        }
+
                         self.settings = Some(settings);
                     }
                 }
@@ -662,20 +668,20 @@ impl TrackerSource {
         order: Vec<usize>,
         settings: Arc<PlaybackSettings>,
     ) {
-        let max_channels = patterns.iter().map(|p| p.channels).max().unwrap_or(0);
-        while self.channels.len() < max_channels {
-            self.channels.push(Channel::new());
+        self.channels.clear();
+        for track in &settings.tracks {
+            let voice_count = track.polyphony.max(1) as usize;
+            let mut voices = Vec::with_capacity(voice_count);
+            for _ in 0..voice_count {
+                let mut ch = Channel::new();
+                ch.set_panning(track.default_panning);
+                voices.push(ch);
+            }
+            self.channels.push(voices);
         }
-        for ch in &mut self.channels {
-            *ch = Channel::new();
-        }
+
         self.preview_channel = Channel::new();
         self.preview_ticks_remaining = 0;
-        for (i, ch) in self.channels.iter_mut().enumerate() {
-            if let Some(track) = settings.tracks.get(i) {
-                ch.set_panning(track.default_panning);
-            }
-        }
 
         self.samples_per_tick = compute_samples_per_tick(settings.bpm, settings.rows_per_beat);
         self.master_volume = settings.master_volume;
@@ -711,55 +717,35 @@ impl TrackerSource {
                 continue;
             }
             let track = &settings.tracks[ch_idx];
-            let raw_volume = pattern.volumes[ch_idx][self.current_row];
-            let raw_panning = pattern.panning[ch_idx][self.current_row];
-            let cell = pattern.data[ch_idx][self.current_row];
-            let channel = &mut self.channels[ch_idx];
+            let voices_in_pattern = pattern.data[ch_idx].len();
+            let voices_in_mixer = self.channels[ch_idx].len();
 
-            let volume = match raw_volume {
-                Some(v) => {
-                    channel.last_volume = Some(v);
-                    Some(v)
-                }
-                None => channel.last_volume,
-            };
+            for voice_idx in 0..voices_in_pattern.min(voices_in_mixer) {
+                let cell = pattern.data[ch_idx][voice_idx][self.current_row];
+                let channel = &mut self.channels[ch_idx][voice_idx];
 
-            if let Some(p) = raw_panning {
-                channel.last_panning = Some(p);
-                channel.set_panning(p as f32 / 255.0);
-            }
-
-            match cell {
-                Cell::NoteOn(note) => {
-                    let vol_from_col = volume.map(|v| v as f32 / 255.0);
-                    let (sample_data, sample_vol) = track.sample_for_note(note.pitch);
-                    let vol = vol_from_col.unwrap_or(sample_vol);
-
-                    channel.trigger(
-                        note.frequency(),
-                        vol,
-                        track.vol_envelope.clone(),
-                        sample_data,
-                        track.vol_fadeout,
-                        track.coarse_tune,
-                        track.fine_tune,
-                        track.pitch_env_enabled,
-                        track.pitch_env_depth,
-                        track.pitch_envelope.clone(),
-                        track.filter.clone(),
-                    );
-                    if raw_panning.is_none() && channel.last_panning.is_none() {
+                match cell {
+                    Cell::NoteOn(note) => {
+                        let (sample_data, sample_vol) = track.sample_for_note(note.pitch);
+                        channel.trigger(
+                            note.frequency(),
+                            sample_vol,
+                            track.vol_envelope.clone(),
+                            sample_data,
+                            track.vol_fadeout,
+                            track.coarse_tune,
+                            track.fine_tune,
+                            track.pitch_env_enabled,
+                            track.pitch_env_depth,
+                            track.pitch_envelope.clone(),
+                            track.filter.clone(),
+                        );
                         channel.set_panning(track.default_panning);
                     }
+                    Cell::NoteOff => channel.note_off(),
+                    Cell::Empty => {}
                 }
-                Cell::NoteOff => channel.note_off(),
-                Cell::Empty => {}
             }
-
-            if (cell == Cell::Empty || cell == Cell::NoteOff)
-                && let Some(v) = volume {
-                    channel.volume = v as f32 / 255.0;
-                }
         }
     }
 
@@ -789,9 +775,11 @@ impl TrackerSource {
             self.process_row();
         }
 
-        for ch in &mut self.channels {
-            if ch.active {
-                ch.tick_update();
+        for track_voices in &mut self.channels {
+            for ch in track_voices.iter_mut() {
+                if ch.active {
+                    ch.tick_update();
+                }
             }
         }
 
@@ -839,29 +827,27 @@ impl Iterator for TrackerSource {
         }
 
         if self.playing {
-            for (ch_idx, ch) in self.channels.iter_mut().enumerate() {
-                if !ch.active {
-                    if write_scope
-                        && let Some(scope) = self.channel_scopes.get(ch_idx) {
-                            scope.push(0.0);
-                        }
-                    continue;
-                }
-                if self.muted_channels.get(ch_idx).copied().unwrap_or(false) {
-                    ch.next_sample();
-                    if write_scope
-                        && let Some(scope) = self.channel_scopes.get(ch_idx) {
-                            scope.push(0.0);
-                        }
-                    continue;
-                }
-                let sample = ch.next_sample();
-                if write_scope
-                    && let Some(scope) = self.channel_scopes.get(ch_idx) {
-                        scope.push(sample);
+            for (ch_idx, track_voices) in self.channels.iter_mut().enumerate() {
+                let muted = self.muted_channels.get(ch_idx).copied().unwrap_or(false);
+                let mut track_mono = 0.0_f32;
+
+                for ch in track_voices.iter_mut() {
+                    if !ch.active {
+                        continue;
                     }
-                mix_l += sample * ch.pan_l;
-                mix_r += sample * ch.pan_r;
+                    if muted {
+                        ch.next_sample();
+                        continue;
+                    }
+                    let sample = ch.next_sample();
+                    track_mono += sample;
+                    mix_l += sample * ch.pan_l;
+                    mix_r += sample * ch.pan_r;
+                }
+
+                if write_scope && let Some(scope) = self.channel_scopes.get(ch_idx) {
+                    scope.push(if muted { 0.0 } else { track_mono });
+                }
             }
         }
 
@@ -869,10 +855,13 @@ impl Iterator for TrackerSource {
         mix_l += preview * self.preview_channel.pan_l;
         mix_r += preview * self.preview_channel.pan_r;
 
-        if !self.playing && self.preview_channel.active && write_scope
-            && let Some(scope) = self.channel_scopes.first() {
-                scope.push(preview);
-            }
+        if !self.playing
+            && self.preview_channel.active
+            && write_scope
+            && let Some(scope) = self.channel_scopes.first()
+        {
+            scope.push(preview);
+        }
 
         self.right_sample = mix_r;
         self.stereo_phase = true;
@@ -973,7 +962,7 @@ mod tests {
         let (tx, mut source, row) = make_source();
 
         let mut pattern = crate::project::Pattern::new(1, 4);
-        pattern.set(0, 0, Cell::NoteOn(crate::project::Note::new(69)));
+        pattern.set(0, 0, 0, Cell::NoteOn(crate::project::Note::new(69)));
 
         tx.send(play_cmd(&pattern)).unwrap();
 
@@ -990,7 +979,7 @@ mod tests {
         let (tx, mut source, _) = make_source();
 
         let mut pattern = crate::project::Pattern::new(1, 4);
-        pattern.set(0, 0, Cell::NoteOn(crate::project::Note::new(69)));
+        pattern.set(0, 0, 0, Cell::NoteOn(crate::project::Note::new(69)));
 
         tx.send(play_cmd(&pattern)).unwrap();
 
