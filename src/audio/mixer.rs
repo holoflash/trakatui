@@ -76,8 +76,8 @@ pub enum Command {
         patterns: Vec<Arc<PatternSnapshot>>,
         order: Vec<usize>,
     },
-    PreviewNote {
-        frequency: f32,
+    PreviewNotes {
+        frequencies: Vec<f32>,
         volume: f32,
         panning: f32,
         vol_envelope: VolEnvelope,
@@ -89,7 +89,7 @@ pub enum Command {
         pitch_env_enabled: bool,
         pitch_env_depth: f32,
         pitch_envelope: VolEnvelope,
-        filter: FilterSettings,
+        filter: Box<FilterSettings>,
     },
 }
 
@@ -485,7 +485,7 @@ const PREVIEW_RELEASE_TICKS: u16 = 10;
 
 pub struct TrackerSource {
     channels: Vec<Vec<Channel>>,
-    preview_channel: Channel,
+    preview_channels: Vec<Channel>,
     preview_ticks_remaining: u16,
     playing: bool,
     patterns: Vec<Arc<PatternSnapshot>>,
@@ -523,7 +523,7 @@ impl TrackerSource {
     ) -> Self {
         Self {
             channels: Vec::new(),
-            preview_channel: Channel::new(),
+            preview_channels: Vec::new(),
             preview_ticks_remaining: 0,
             playing: false,
             patterns: Vec::new(),
@@ -561,7 +561,7 @@ impl TrackerSource {
                 Command::Stop => {
                     self.playing = false;
                     for track_voices in &mut self.channels {
-                        for ch in track_voices.iter_mut() {
+                        for ch in track_voices {
                             *ch = Channel::new();
                         }
                     }
@@ -617,8 +617,8 @@ impl TrackerSource {
                         }
                     }
                 }
-                Command::PreviewNote {
-                    frequency,
+                Command::PreviewNotes {
+                    frequencies,
                     volume,
                     panning,
                     vol_envelope,
@@ -637,20 +637,25 @@ impl TrackerSource {
                     } else {
                         vol_fadeout
                     };
-                    self.preview_channel.trigger(
-                        frequency,
-                        volume,
-                        vol_envelope,
-                        &sample_data,
-                        fadeout,
-                        coarse_tune,
-                        fine_tune,
-                        pitch_env_enabled,
-                        pitch_env_depth,
-                        pitch_envelope,
-                        filter,
-                    );
-                    self.preview_channel.set_panning(panning);
+                    self.preview_channels.clear();
+                    for &freq in &frequencies {
+                        let mut ch = Channel::new();
+                        ch.trigger(
+                            freq,
+                            volume,
+                            vol_envelope.clone(),
+                            &sample_data,
+                            fadeout,
+                            coarse_tune,
+                            fine_tune,
+                            pitch_env_enabled,
+                            pitch_env_depth,
+                            pitch_envelope.clone(),
+                            (*filter).clone(),
+                        );
+                        ch.set_panning(panning);
+                        self.preview_channels.push(ch);
+                    }
                     self.preview_ticks_remaining = PREVIEW_RELEASE_TICKS;
                     if !self.playing {
                         self.master_volume = master_volume;
@@ -680,7 +685,7 @@ impl TrackerSource {
             self.channels.push(voices);
         }
 
-        self.preview_channel = Channel::new();
+        self.preview_channels.clear();
         self.preview_ticks_remaining = 0;
 
         self.samples_per_tick = compute_samples_per_tick(settings.bpm, settings.rows_per_beat);
@@ -783,12 +788,16 @@ impl TrackerSource {
             }
         }
 
-        if self.preview_channel.active {
-            self.preview_channel.tick_update();
-            if self.preview_ticks_remaining > 0 {
-                self.preview_ticks_remaining -= 1;
-                if self.preview_ticks_remaining == 0 {
-                    self.preview_channel.note_off();
+        for pch in &mut self.preview_channels {
+            if pch.active {
+                pch.tick_update();
+            }
+        }
+        if self.preview_ticks_remaining > 0 {
+            self.preview_ticks_remaining -= 1;
+            if self.preview_ticks_remaining == 0 {
+                for pch in &mut self.preview_channels {
+                    pch.note_off();
                 }
             }
         }
@@ -851,16 +860,20 @@ impl Iterator for TrackerSource {
             }
         }
 
-        let preview = self.preview_channel.next_sample();
-        mix_l += preview * self.preview_channel.pan_l;
-        mix_r += preview * self.preview_channel.pan_r;
+        let mut preview_mono = 0.0_f32;
+        for pch in &mut self.preview_channels {
+            let s = pch.next_sample();
+            preview_mono += s;
+            mix_l += s * pch.pan_l;
+            mix_r += s * pch.pan_r;
+        }
 
         if !self.playing
-            && self.preview_channel.active
+            && preview_mono.abs() > 0.0
             && write_scope
             && let Some(scope) = self.channel_scopes.first()
         {
-            scope.push(preview);
+            scope.push(preview_mono);
         }
 
         self.right_sample = mix_r;

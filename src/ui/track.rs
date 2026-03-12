@@ -271,14 +271,26 @@ fn draw_basic_fields(ui: &mut egui::Ui, app: &mut App, inst_idx: usize) {
 
     ui.horizontal(|ui| {
         field_label(ui, "POLYPHONY");
-        let mut poly = app.project.tracks[inst_idx].polyphony;
-        let drag = egui::DragValue::new(&mut poly).range(1..=8).speed(0.05);
-        let response = ui.add(drag);
-        if response.changed() {
-            app.project.tracks[inst_idx].polyphony = poly;
-            for pat in &mut app.project.patterns {
-                if inst_idx < pat.channels {
-                    pat.set_voice_count(inst_idx, poly as usize);
+        let current = app.project.tracks[inst_idx].polyphony;
+        for n in 1u8..=8 {
+            let selected = n == current;
+            let color = if selected {
+                COLOR_TEXT_ACTIVE
+            } else {
+                COLOR_TEXT_DIM
+            };
+            let btn = ui.selectable_label(
+                selected,
+                RichText::new(format!("{n}"))
+                    .font(FontId::monospace(12.0))
+                    .color(color),
+            );
+            if btn.clicked() && n != current {
+                app.project.tracks[inst_idx].polyphony = n;
+                for pat in &mut app.project.patterns {
+                    if inst_idx < pat.channels {
+                        pat.set_voice_count(inst_idx, n as usize);
+                    }
                 }
             }
         }

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use crate::audio::mixer::{SCOPE_SIZE, ScopeBuffer};
 
 use crate::app::keybindings::KeyBindings;
-use crate::project::Cell;
+use crate::project::{Cell, Note};
 
 use std::sync::atomic::{AtomicU32, AtomicUsize};
 
@@ -26,8 +26,7 @@ pub enum ClipboardData {
 }
 
 pub struct MovePreview {
-    #[allow(clippy::type_complexity)]
-    pub cells: Vec<(usize, usize, usize, Cell)>,
+    pub cells: Vec<(usize, usize, Cell)>,
     pub origin_anchor: (usize, usize, usize),
     pub origin_cursor: (usize, usize, usize),
 }
@@ -86,6 +85,8 @@ pub struct App {
     pub filter_envelope_point_idx: usize,
     pub dragging_filter_env_point: Option<usize>,
     pub poly_input: bool,
+    pub chord_buffer: Vec<Note>,
+    pub chord_frames_remaining: u8,
 }
 
 impl App {
@@ -140,6 +141,8 @@ impl App {
             filter_envelope_point_idx: 0,
             dragging_filter_env_point: None,
             poly_input: false,
+            chord_buffer: Vec::new(),
+            chord_frames_remaining: 0,
         }
     }
 
@@ -334,5 +337,31 @@ impl App {
             .get(ch)
             .map(|t| t.polyphony.max(1) as usize)
             .unwrap_or(1)
+    }
+
+    pub fn flat_col(&self, ch: usize, v: usize) -> usize {
+        let mut col = 0;
+        for c in 0..ch {
+            col += self.voices_for_channel(c);
+        }
+        col + v
+    }
+
+    pub fn resolve_flat_col(&self, flat: usize) -> Option<(usize, usize)> {
+        let channels = self.project.current_pattern().channels;
+        let mut remaining = flat;
+        for ch in 0..channels {
+            let voices = self.voices_for_channel(ch);
+            if remaining < voices {
+                return Some((ch, remaining));
+            }
+            remaining -= voices;
+        }
+        None
+    }
+
+    pub fn total_columns(&self) -> usize {
+        let channels = self.project.current_pattern().channels;
+        (0..channels).map(|ch| self.voices_for_channel(ch)).sum()
     }
 }

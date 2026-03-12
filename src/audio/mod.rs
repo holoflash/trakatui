@@ -178,10 +178,16 @@ impl AudioEngine {
         });
     }
 
-    pub fn preview_note(&self, freq: f32, track_idx: usize, tracks: &[Track], master_volume: f32) {
+    pub fn preview_notes(
+        &self,
+        freqs: &[f32],
+        track_idx: usize,
+        tracks: &[Track],
+        master_volume: f32,
+    ) {
         let track = &tracks[track_idx % tracks.len()];
-        let _ = self.sender.send(Command::PreviewNote {
-            frequency: freq,
+        let _ = self.sender.send(Command::PreviewNotes {
+            frequencies: freqs.to_vec(),
             volume: track.default_volume,
             panning: track.default_panning,
             vol_envelope: track.vol_envelope.clone(),
@@ -193,7 +199,7 @@ impl AudioEngine {
             pitch_env_enabled: track.pitch_env_enabled,
             pitch_env_depth: track.pitch_env_depth,
             pitch_envelope: track.pitch_envelope.clone(),
-            filter: track.filter.clone(),
+            filter: Box::new(track.filter.clone()),
         });
     }
 }

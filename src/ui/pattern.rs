@@ -250,8 +250,19 @@ fn draw_body_row(
                 && !has_selection;
 
             let is_selected =
-                sel_bounds.is_some_and(|(min_ch, max_ch, _min_v, _max_v, min_row, max_row)| {
-                    row_idx >= min_row && row_idx <= max_row && ch >= min_ch && ch <= max_ch
+                sel_bounds.is_some_and(|(min_ch, max_ch, min_v, max_v, min_row, max_row)| {
+                    if row_idx < min_row || row_idx > max_row || ch < min_ch || ch > max_ch {
+                        return false;
+                    }
+                    if min_ch == max_ch {
+                        v >= min_v && v <= max_v
+                    } else if ch == min_ch {
+                        v >= min_v
+                    } else if ch == max_ch {
+                        v <= max_v
+                    } else {
+                        true
+                    }
                 });
 
             let pat = app.project.current_pattern();
@@ -262,15 +273,17 @@ fn draw_body_row(
             };
 
             if let Some(ref preview) = app.move_preview
-                && let Some((min_ch, _, _, _, min_row, _)) = sel_bounds
+                && let Some((min_ch, _, min_v, _, min_row, _)) = sel_bounds
             {
-                let ch_off = ch.wrapping_sub(min_ch);
+                let base_flat = app.flat_col(min_ch, min_v);
+                let cur_flat = app.flat_col(ch, v);
+                let col_off = cur_flat.wrapping_sub(base_flat);
                 let row_off = row_idx.wrapping_sub(min_row);
                 if is_selected
-                    && let Some((_, _, _, p_cell)) = preview
+                    && let Some((_, _, p_cell)) = preview
                         .cells
                         .iter()
-                        .find(|(co, pv, ro, _)| *co == ch_off && *pv == v && *ro == row_off)
+                        .find(|(co, ro, _)| *co == col_off && *ro == row_off)
                 {
                     cell = *p_cell;
                 }

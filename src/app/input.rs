@@ -85,6 +85,8 @@ impl App {
 
             self.current_track = self.cursor.channel;
 
+            self.tick_chord_buffer();
+
             result
         })
     }
@@ -204,49 +206,64 @@ impl App {
             _ => unreachable!(),
         };
 
+        let total_cols = self.total_columns();
+        let total_rows = self.project.current_pattern().rows;
+
         if self.move_preview.is_some() {
-            let (min_ch, max_ch, _, _, min_row, max_row) = self.selection_bounds().unwrap();
-            let in_bounds = min_row.checked_add_signed(dr).is_some()
-                && max_row
-                    .checked_add_signed(dr)
-                    .is_some_and(|r| r < self.project.current_pattern().rows)
-                && min_ch.checked_add_signed(dc).is_some()
-                && max_ch
-                    .checked_add_signed(dc)
-                    .is_some_and(|c| c < self.project.current_pattern().channels);
-            if in_bounds {
-                self.cursor.channel = self.cursor.channel.checked_add_signed(dc).unwrap();
-                self.cursor.row = self.cursor.row.checked_add_signed(dr).unwrap();
-                if let Some((ach, _, arow)) = self.cursor.selection_anchor.as_mut() {
-                    *ach = ach.checked_add_signed(dc).unwrap();
-                    *arow = arow.checked_add_signed(dr).unwrap();
+            let (_, _, _, _, min_row, max_row) = self.selection_bounds().unwrap();
+            let cur_flat = self.flat_col(self.cursor.channel, self.cursor.voice) as isize;
+            let anc_flat = self.cursor.selection_anchor
+                .map(|(ach, av, _)| self.flat_col(ach, av) as isize)
+                .unwrap_or(cur_flat);
+            let min_flat = cur_flat.min(anc_flat);
+            let max_flat = cur_flat.max(anc_flat);
+
+            let new_min_row = min_row as isize + dr;
+            let new_max_row = max_row as isize + dr;
+            let new_min_flat = min_flat + dc;
+            let new_max_flat = max_flat + dc;
+
+            if new_min_row >= 0 && new_max_row < total_rows as isize
+                && new_min_flat >= 0 && new_max_flat < total_cols as isize
+            {
+                let new_cur_flat = (cur_flat + dc) as usize;
+                let new_anc_flat = (anc_flat + dc) as usize;
+                let (nch, nv) = self.resolve_flat_col(new_cur_flat).unwrap();
+                let (nach, nav) = self.resolve_flat_col(new_anc_flat).unwrap();
+                let new_cur_row = (self.cursor.row as isize + dr) as usize;
+                self.cursor.channel = nch;
+                self.cursor.voice = nv;
+                self.cursor.row = new_cur_row;
+                if let Some((ach, av, arow)) = self.cursor.selection_anchor.as_mut() {
+                    *ach = nach;
+                    *av = nav;
+                    *arow = (*arow as isize + dr) as usize;
                 }
             }
             return true;
         }
 
-        if let Some((min_ch, max_ch, _, _, min_row, max_row)) = self.selection_bounds() {
-            let in_bounds = min_row.checked_add_signed(dr).is_some()
-                && max_row
-                    .checked_add_signed(dr)
-                    .is_some_and(|r| r < self.project.current_pattern().rows)
-                && min_ch.checked_add_signed(dc).is_some()
-                && max_ch
-                    .checked_add_signed(dc)
-                    .is_some_and(|c| c < self.project.current_pattern().channels);
+        if let Some((min_ch, max_ch, min_v, max_v, min_row, max_row)) = self.selection_bounds() {
+            let min_flat = self.flat_col(min_ch, min_v) as isize;
+            let max_flat = self.flat_col(max_ch, max_v) as isize;
 
-            if in_bounds {
+            let new_min_row = min_row as isize + dr;
+            let new_max_row = max_row as isize + dr;
+            let new_min_flat = min_flat + dc;
+            let new_max_flat = max_flat + dc;
+
+            if new_min_row >= 0 && new_max_row < total_rows as isize
+                && new_min_flat >= 0 && new_max_flat < total_cols as isize
+            {
                 self.save_undo_snapshot();
 
                 let mut cells = Vec::new();
-                for ch in min_ch..=max_ch {
-                    let voices = self.project.current_pattern().voice_count(ch);
-                    for v in 0..voices {
-                        for row in min_row..=max_row {
-                            let cell = self.project.current_pattern().get(ch, v, row);
-                            cells.push((ch - min_ch, v, row - min_row, cell));
-                            self.project.current_pattern_mut().clear(ch, v, row);
-                        }
+                for flat in min_flat as usize..=max_flat as usize {
+                    let (ch, v) = self.resolve_flat_col(flat).unwrap();
+                    for row in min_row..=max_row {
+                        let cell = self.project.current_pattern().get(ch, v, row);
+                        cells.push((flat - min_flat as usize, row - min_row, cell));
+                        self.project.current_pattern_mut().clear(ch, v, row);
                     }
                 }
 
@@ -257,41 +274,39 @@ impl App {
                     origin_cursor: (self.cursor.channel, self.cursor.voice, self.cursor.row),
                 });
 
-                self.cursor.channel = self.cursor.channel.checked_add_signed(dc).unwrap();
-                self.cursor.row = self.cursor.row.checked_add_signed(dr).unwrap();
-                if let Some((ach, _, arow)) = self.cursor.selection_anchor.as_mut() {
-                    *ach = ach.checked_add_signed(dc).unwrap();
-                    *arow = arow.checked_add_signed(dr).unwrap();
+                let cur_flat = self.flat_col(self.cursor.channel, self.cursor.voice) as isize;
+                let anc_flat = self.flat_col(anchor.0, anchor.1) as isize;
+                let new_cur_flat = (cur_flat + dc) as usize;
+                let new_anc_flat = (anc_flat + dc) as usize;
+                let (nch, nv) = self.resolve_flat_col(new_cur_flat).unwrap();
+                let (nach, nav) = self.resolve_flat_col(new_anc_flat).unwrap();
+                let new_cur_row = (self.cursor.row as isize + dr) as usize;
+                self.cursor.channel = nch;
+                self.cursor.voice = nv;
+                self.cursor.row = new_cur_row;
+                if let Some((ach, av, arow)) = self.cursor.selection_anchor.as_mut() {
+                    *ach = nach;
+                    *av = nav;
+                    *arow = (*arow as isize + dr) as usize;
                 }
             }
-        } else if let (Some(new_row), Some(new_ch)) = (
-            self.cursor.row.checked_add_signed(dr),
-            self.cursor.channel.checked_add_signed(dc),
-        ) && new_row < self.project.current_pattern().rows
-            && new_ch < self.project.current_pattern().channels
-        {
-            self.save_undo_snapshot();
-            let v = self.cursor.voice;
-            let cell = self
-                .project
-                .current_pattern()
-                .get(self.cursor.channel, v, self.cursor.row);
-            self.project
-                .current_pattern_mut()
-                .clear(self.cursor.channel, v, self.cursor.row);
-
-            let target_v = v.min(
-                self.project
-                    .current_pattern()
-                    .voice_count(new_ch)
-                    .saturating_sub(1),
-            );
-            self.project
-                .current_pattern_mut()
-                .set(new_ch, target_v, new_row, cell);
-            self.cursor.channel = new_ch;
-            self.cursor.voice = target_v;
-            self.cursor.row = new_row;
+        } else {
+            let cur_flat = self.flat_col(self.cursor.channel, self.cursor.voice) as isize;
+            let new_flat = cur_flat + dc;
+            let new_row = self.cursor.row as isize + dr;
+            if new_flat >= 0 && new_flat < total_cols as isize
+                && new_row >= 0 && new_row < total_rows as isize
+            {
+                self.save_undo_snapshot();
+                let v = self.cursor.voice;
+                let cell = self.project.current_pattern().get(self.cursor.channel, v, self.cursor.row);
+                self.project.current_pattern_mut().clear(self.cursor.channel, v, self.cursor.row);
+                let (nch, nv) = self.resolve_flat_col(new_flat as usize).unwrap();
+                self.project.current_pattern_mut().set(nch, nv, new_row as usize, cell);
+                self.cursor.channel = nch;
+                self.cursor.voice = nv;
+                self.cursor.row = new_row as usize;
+            }
         }
 
         true
@@ -301,15 +316,16 @@ impl App {
         let Some(preview) = self.move_preview.take() else {
             return;
         };
-        let (min_ch, _, _, _, min_row, _) = self.selection_bounds().unwrap();
-        for (ch_off, v, row_off, cell) in &preview.cells {
-            let ch = min_ch + ch_off;
+        let (min_ch, _, min_v, _, min_row, _) = self.selection_bounds().unwrap();
+        let base_flat = self.flat_col(min_ch, min_v);
+        let total_cols = self.total_columns();
+        let total_rows = self.project.current_pattern().rows;
+        for (col_off, row_off, cell) in &preview.cells {
+            let flat = base_flat + col_off;
             let row = min_row + row_off;
-            if ch < self.project.current_pattern().channels
-                && *v < self.project.current_pattern().voice_count(ch)
-                && row < self.project.current_pattern().rows
-            {
-                self.project.current_pattern_mut().set(ch, *v, row, *cell);
+            if flat < total_cols && row < total_rows {
+                let (ch, v) = self.resolve_flat_col(flat).unwrap();
+                self.project.current_pattern_mut().set(ch, v, row, *cell);
             }
         }
         self.clear_selection();
@@ -319,19 +335,19 @@ impl App {
         let Some(preview) = self.move_preview.take() else {
             return;
         };
-        let (orig_ach, _orig_avoice, orig_arow) = preview.origin_anchor;
+        let (orig_ach, orig_av, orig_arow) = preview.origin_anchor;
         let (orig_ch, orig_voice, orig_row) = preview.origin_cursor;
-        let base_ch = orig_ach.min(orig_ch);
+        let orig_min_flat = self.flat_col(orig_ach.min(orig_ch), if orig_ach <= orig_ch { orig_av } else { orig_voice });
         let base_row = orig_arow.min(orig_row);
+        let total_cols = self.total_columns();
+        let total_rows = self.project.current_pattern().rows;
 
-        for (ch_off, v, row_off, cell) in &preview.cells {
-            let ch = base_ch + ch_off;
+        for (col_off, row_off, cell) in &preview.cells {
+            let flat = orig_min_flat + col_off;
             let row = base_row + row_off;
-            if ch < self.project.current_pattern().channels
-                && *v < self.project.current_pattern().voice_count(ch)
-                && row < self.project.current_pattern().rows
-            {
-                self.project.current_pattern_mut().set(ch, *v, row, *cell);
+            if flat < total_cols && row < total_rows {
+                let (ch, v) = self.resolve_flat_col(flat).unwrap();
+                self.project.current_pattern_mut().set(ch, v, row, *cell);
             }
         }
         self.cursor.selection_anchor = Some(preview.origin_anchor);
@@ -432,10 +448,22 @@ impl App {
     }
 
     fn handle_delete(&mut self) {
-        if let Some((min_ch, max_ch, _, _, min_row, max_row)) = self.selection_bounds() {
+        if let Some((min_ch, max_ch, min_v, max_v, min_row, max_row)) = self.selection_bounds() {
             for ch in min_ch..=max_ch {
                 let voices = self.project.current_pattern().voice_count(ch);
                 for v in 0..voices {
+                    let in_sel = if min_ch == max_ch {
+                        v >= min_v && v <= max_v
+                    } else if ch == min_ch {
+                        v >= min_v
+                    } else if ch == max_ch {
+                        v <= max_v
+                    } else {
+                        true
+                    };
+                    if !in_sel {
+                        continue;
+                    }
                     for row in min_row..=max_row {
                         self.project.current_pattern_mut().clear(ch, v, row);
                     }
@@ -453,7 +481,7 @@ impl App {
     }
 
     fn handle_copy(&mut self) {
-        let (min_ch, max_ch, _, _, min_row, max_row) = self.selection_bounds().unwrap_or((
+        let (min_ch, max_ch, min_v, max_v, min_row, max_row) = self.selection_bounds().unwrap_or((
             self.cursor.channel,
             self.cursor.channel,
             self.cursor.voice,
@@ -467,6 +495,17 @@ impl App {
             .map(|ch| {
                 let voices = pat.voice_count(ch);
                 (0..voices)
+                    .filter(|&v| {
+                        if min_ch == max_ch {
+                            v >= min_v && v <= max_v
+                        } else if ch == min_ch {
+                            v >= min_v
+                        } else if ch == max_ch {
+                            v <= max_v
+                        } else {
+                            true
+                        }
+                    })
                     .map(|v| (min_row..=max_row).map(|r| pat.data[ch][v][r]).collect())
                     .collect()
             })
@@ -510,12 +549,24 @@ impl App {
 
     fn handle_note_off(&mut self) {
         self.clear_selection();
-        self.project.current_pattern_mut().set(
-            self.cursor.channel,
-            self.cursor.voice,
-            self.cursor.row,
-            Cell::NoteOff,
-        );
+        if self.poly_input {
+            let voices = self.voices_for_channel(self.cursor.channel);
+            for v in 0..voices {
+                self.project.current_pattern_mut().set(
+                    self.cursor.channel,
+                    v,
+                    self.cursor.row,
+                    Cell::NoteOff,
+                );
+            }
+        } else {
+            self.project.current_pattern_mut().set(
+                self.cursor.channel,
+                self.cursor.voice,
+                self.cursor.row,
+                Cell::NoteOff,
+            );
+        }
         self.advance_cursor();
     }
 
@@ -532,7 +583,7 @@ impl App {
             return false;
         };
 
-        let (min_ch, max_ch, _, _, min_row, max_row) = self.selection_bounds().unwrap_or((
+        let (min_ch, max_ch, min_v, max_v, min_row, max_row) = self.selection_bounds().unwrap_or((
             self.cursor.channel,
             self.cursor.channel,
             self.cursor.voice,
@@ -541,11 +592,26 @@ impl App {
             self.cursor.row,
         ));
 
+        let voice_in_sel = |ch: usize, v: usize| -> bool {
+            if min_ch == max_ch {
+                v >= min_v && v <= max_v
+            } else if ch == min_ch {
+                v >= min_v
+            } else if ch == max_ch {
+                v <= max_v
+            } else {
+                true
+            }
+        };
+
         let mut min_pitch: Option<u8> = None;
         let mut max_pitch: Option<u8> = None;
         for ch in min_ch..=max_ch {
             let voices = self.project.current_pattern().voice_count(ch);
             for v in 0..voices {
+                if !voice_in_sel(ch, v) {
+                    continue;
+                }
                 for row in min_row..=max_row {
                     if let Cell::NoteOn(note) = self.project.current_pattern().get(ch, v, row) {
                         min_pitch = Some(min_pitch.map_or(note.pitch, |p: u8| p.min(note.pitch)));
@@ -566,6 +632,9 @@ impl App {
             for ch in min_ch..=max_ch {
                 let voices = self.project.current_pattern().voice_count(ch);
                 for v in 0..voices {
+                    if !voice_in_sel(ch, v) {
+                        continue;
+                    }
                     for row in min_row..=max_row {
                         if let Cell::NoteOn(note) = self.project.current_pattern().get(ch, v, row) {
                             let new_pitch = u8::try_from(i16::from(note.pitch) + delta).unwrap();
@@ -611,70 +680,93 @@ impl App {
 
     fn handle_note_keys(&mut self, input: &egui::InputState) {
         let note_keys = [
-            Key::Z,
-            Key::X,
-            Key::C,
-            Key::V,
-            Key::B,
-            Key::N,
-            Key::M,
-            Key::A,
-            Key::S,
-            Key::D,
-            Key::F,
-            Key::G,
-            Key::H,
-            Key::J,
-            Key::K,
-            Key::L,
-            Key::Q,
-            Key::W,
-            Key::E,
-            Key::R,
-            Key::T,
-            Key::Y,
-            Key::U,
-            Key::I,
-            Key::O,
-            Key::P,
+            Key::Z, Key::X, Key::C, Key::V, Key::B, Key::N, Key::M,
+            Key::A, Key::S, Key::D, Key::F, Key::G, Key::H, Key::J,
+            Key::K, Key::L, Key::Q, Key::W, Key::E, Key::R, Key::T,
+            Key::Y, Key::U, Key::I, Key::O, Key::P,
         ];
+        let scale = self.project.scale_index.scale();
+        let mut new_notes: Vec<Note> = Vec::new();
         for &k in &note_keys {
-            if input.key_pressed(k) {
-                self.save_undo_snapshot();
-                let scale = self.project.scale_index.scale();
-                if let Some(note) =
-                    key_to_note(k, self.cursor.octave, scale, self.project.transpose)
-                {
-                    self.project.current_pattern_mut().set(
-                        self.cursor.channel,
-                        self.cursor.voice,
-                        self.cursor.row,
-                        Cell::NoteOn(note),
-                    );
-                    if !self.playback.playing {
-                        self.audio.preview_note(
-                            note.frequency(),
-                            self.current_track,
-                            &self.project.tracks,
-                            self.project.master_volume_linear(),
-                        );
-                    }
-                    self.clear_selection();
-                    if self.poly_input {
-                        let voices = self.voices_for_channel(self.cursor.channel);
-                        if self.cursor.voice + 1 < voices {
-                            self.cursor.voice += 1;
-                        } else {
-                            self.cursor.voice = 0;
-                            self.advance_cursor();
-                        }
-                    } else {
-                        self.advance_cursor();
-                    }
-                }
-                break;
+            if input.key_pressed(k)
+                && let Some(note) = key_to_note(k, self.cursor.octave, scale, self.project.transpose)
+            {
+                new_notes.push(note);
             }
         }
+        if new_notes.is_empty() {
+            return;
+        }
+        if self.poly_input {
+            if self.chord_buffer.is_empty() {
+                self.save_undo_snapshot();
+            }
+            for note in &new_notes {
+                if !self.chord_buffer.iter().any(|n| n.pitch == note.pitch) {
+                    self.chord_buffer.push(*note);
+                }
+            }
+            self.chord_frames_remaining = 3;
+            if !self.playback.playing {
+                let freqs: Vec<f32> = self.chord_buffer.iter().map(|n| n.frequency()).collect();
+                self.audio.preview_notes(
+                    &freqs,
+                    self.current_track,
+                    &self.project.tracks,
+                    self.project.master_volume_linear(),
+                );
+            }
+        } else {
+            self.save_undo_snapshot();
+            self.clear_selection();
+            let note = new_notes[0];
+            self.project.current_pattern_mut().set(
+                self.cursor.channel,
+                self.cursor.voice,
+                self.cursor.row,
+                Cell::NoteOn(note),
+            );
+            if !self.playback.playing {
+                self.audio.preview_notes(
+                    &[note.frequency()],
+                    self.current_track,
+                    &self.project.tracks,
+                    self.project.master_volume_linear(),
+                );
+            }
+            self.advance_cursor();
+        }
+    }
+
+    fn tick_chord_buffer(&mut self) {
+        if !self.poly_input || self.chord_buffer.is_empty() {
+            return;
+        }
+        if self.chord_frames_remaining > 0 {
+            self.chord_frames_remaining -= 1;
+            if self.chord_frames_remaining == 0 {
+                self.commit_chord();
+            }
+        }
+    }
+
+    fn commit_chord(&mut self) {
+        let notes: Vec<Note> = self.chord_buffer.drain(..).collect();
+        if notes.is_empty() {
+            return;
+        }
+        self.clear_selection();
+        let voices = self.voices_for_channel(self.cursor.channel);
+        for (i, &note) in notes.iter().enumerate() {
+            let v = i.min(voices - 1);
+            self.project.current_pattern_mut().set(
+                self.cursor.channel,
+                v,
+                self.cursor.row,
+                Cell::NoteOn(note),
+            );
+        }
+        self.advance_cursor();
     }
 
     fn advance_cursor(&mut self) {
