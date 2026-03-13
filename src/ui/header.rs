@@ -151,30 +151,71 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                     app.text_editing = true;
                 }
 
-                draw_field(ui, "DIV");
+                draw_field(ui, "SIG");
+                let mut num = app.project.time_sig_numerator;
                 let r = ui
-                    .add(
-                        egui::DragValue::new(&mut app.project.subdivision)
-                            .range(2..=64)
-                            .speed(0.2),
-                    )
-                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
-                if r.has_focus() {
-                    app.text_editing = true;
-                }
-
-                draw_field(ui, "LEN");
-                let mut len = app.project.current_pattern().rows;
-                let r = ui
-                    .add(egui::DragValue::new(&mut len).range(1..=128).speed(0.3))
+                    .add(egui::DragValue::new(&mut num).range(1..=32).speed(0.2))
                     .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
                 if r.has_focus() {
                     app.text_editing = true;
                 }
                 if r.changed() {
-                    app.project.current_pattern_mut().resize(len);
-                    if app.cursor.row >= len {
-                        app.cursor.row = len - 1;
+                    app.project.time_sig_numerator = num;
+                    let new_rows = app.project.computed_rows();
+                    app.project.current_pattern_mut().resize(new_rows);
+                    if app.cursor.row >= new_rows {
+                        app.cursor.row = new_rows.saturating_sub(1);
+                    }
+                }
+
+                ui.label(
+                    RichText::new("/")
+                        .font(FontId::monospace(12.0))
+                        .color(COLOR_TEXT_DIM),
+                );
+
+                let mut den = app.project.time_sig_denominator;
+                let r = ui
+                    .add(egui::DragValue::new(&mut den).range(1..=32).speed(0.2))
+                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+                if r.has_focus() {
+                    app.text_editing = true;
+                }
+                if r.changed() {
+                    app.project.time_sig_denominator = den;
+                }
+
+                draw_field(ui, "NOTE");
+                let mut nv = app.project.note_value;
+                let r = ui
+                    .add(egui::DragValue::new(&mut nv).range(1..=64).speed(0.2))
+                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+                if r.has_focus() {
+                    app.text_editing = true;
+                }
+                if r.changed() {
+                    app.project.note_value = nv;
+                    let new_rows = app.project.computed_rows();
+                    app.project.current_pattern_mut().resize(new_rows);
+                    if app.cursor.row >= new_rows {
+                        app.cursor.row = new_rows.saturating_sub(1);
+                    }
+                }
+
+                draw_field(ui, "BARS");
+                let mut bars = app.project.measures;
+                let r = ui
+                    .add(egui::DragValue::new(&mut bars).range(1..=32).speed(0.2))
+                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+                if r.has_focus() {
+                    app.text_editing = true;
+                }
+                if r.changed() {
+                    app.project.measures = bars;
+                    let new_rows = app.project.computed_rows();
+                    app.project.current_pattern_mut().resize(new_rows);
+                    if app.cursor.row >= new_rows {
+                        app.cursor.row = new_rows.saturating_sub(1);
                     }
                 }
 

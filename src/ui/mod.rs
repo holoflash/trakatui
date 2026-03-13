@@ -25,7 +25,8 @@ pub const COLOR_MODE_PLAYING: Color32 = Color32::from_rgb(230, 205, 140);
 
 pub const COLOR_PATTERN_NOTE: Color32 = Color32::from_rgb(210, 190, 130);
 pub const COLOR_PATTERN_NOTE_OFF: Color32 = Color32::from_rgb(200, 130, 120);
-pub const COLOR_PATTERN_SUBDIVISION: Color32 = Color32::from_rgb(32, 28, 48);
+pub const COLOR_PATTERN_BEATMARKER: Color32 = Color32::from_rgb(36, 32, 52);
+pub const COLOR_PATTERN_SUBDIVISION: Color32 = Color32::from_rgb(24, 21, 38);
 pub const COLOR_PATTERN_CURSOR_BG: Color32 = Color32::from_rgb(105, 95, 115);
 pub const COLOR_PATTERN_CURSOR_TEXT: Color32 = Color32::from_rgb(255, 250, 235);
 
@@ -34,8 +35,6 @@ pub const COLOR_PATTERN_PLAYBACK_TEXT: Color32 = Color32::from_rgb(255, 245, 220
 
 pub const COLOR_PATTERN_SELECTION_BG: Color32 = Color32::from_rgb(100, 85, 50);
 pub const COLOR_PATTERN_SELECTION_TEXT: Color32 = Color32::from_rgb(245, 235, 200);
-
-
 
 pub fn draw(ctx: &egui::Context, app: &mut App) {
     header::draw_header(ctx, app);

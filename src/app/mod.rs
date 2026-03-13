@@ -198,6 +198,7 @@ impl App {
                 &self.project.patterns,
                 &self.project.order,
                 self.project.bpm,
+                self.project.rows_per_beat(),
                 &path,
                 &self.project.tracks,
                 self.project.master_volume_linear(),

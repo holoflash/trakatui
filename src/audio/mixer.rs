@@ -926,6 +926,7 @@ pub fn export_source(
     patterns: &[crate::project::Pattern],
     order: &[usize],
     bpm: u16,
+    rows_per_beat: usize,
     tracks: &[Track],
     master_volume: f32,
 ) -> TrackerSource {
@@ -939,7 +940,7 @@ pub fn export_source(
         .collect();
     let settings = Arc::new(PlaybackSettings {
         bpm,
-        rows_per_beat: 4,
+        rows_per_beat,
         master_volume,
         tracks: tracks.to_vec(),
         muted_channels: Vec::new(),

@@ -6,10 +6,10 @@ use crate::app::{App, Mode};
 use crate::project::Cell;
 
 use super::{
-    COLOR_LAYOUT_BG_DARK, COLOR_PATTERN_CURSOR_BG, COLOR_PATTERN_CURSOR_TEXT, COLOR_PATTERN_NOTE,
-    COLOR_PATTERN_NOTE_OFF, COLOR_PATTERN_PLAYBACK_HIGHLIGHT, COLOR_PATTERN_PLAYBACK_TEXT,
-    COLOR_PATTERN_SELECTION_BG, COLOR_PATTERN_SELECTION_TEXT, COLOR_PATTERN_SUBDIVISION,
-    COLOR_TEXT_DIM,
+    COLOR_LAYOUT_BG_DARK, COLOR_PATTERN_BEATMARKER, COLOR_PATTERN_CURSOR_BG,
+    COLOR_PATTERN_CURSOR_TEXT, COLOR_PATTERN_NOTE, COLOR_PATTERN_NOTE_OFF,
+    COLOR_PATTERN_PLAYBACK_HIGHLIGHT, COLOR_PATTERN_PLAYBACK_TEXT, COLOR_PATTERN_SELECTION_BG,
+    COLOR_PATTERN_SELECTION_TEXT, COLOR_PATTERN_SUBDIVISION, COLOR_TEXT_DIM,
 };
 
 const FONT: FontId = FontId::monospace(14.0);
@@ -144,10 +144,15 @@ fn draw_body_row(
 ) {
     let row_idx = row.index();
     let is_playback_row = app.playback.playing && row_idx == app.playback_row_display;
-    let is_subdivision = row_idx.is_multiple_of(app.project.subdivision);
+    let rows_per_beat = app.project.rows_per_beat();
+    let is_beat = rows_per_beat > 0 && row_idx.is_multiple_of(rows_per_beat);
+    let half_beat = (rows_per_beat / 2).max(1);
+    let is_subdivision = !is_beat && rows_per_beat > 1 && row_idx.is_multiple_of(half_beat);
 
     let row_bg = if is_playback_row {
         COLOR_PATTERN_PLAYBACK_HIGHLIGHT
+    } else if is_beat {
+        COLOR_PATTERN_BEATMARKER
     } else if is_subdivision {
         COLOR_PATTERN_SUBDIVISION
     } else {

@@ -24,7 +24,7 @@ impl App {
             &self.project.order,
             &self.project.tracks,
             self.project.bpm,
-            self.project.subdivision,
+            self.project.rows_per_beat(),
             self.project.master_volume_linear(),
             &self.muted_channels,
         );
@@ -66,7 +66,7 @@ impl App {
         self.audio.update_settings(
             &self.project.tracks,
             self.project.bpm,
-            self.project.subdivision,
+            self.project.rows_per_beat(),
             self.project.master_volume_linear(),
             &self.muted_channels,
         );

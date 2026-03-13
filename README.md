@@ -8,6 +8,7 @@ A lightweight cross-platform tracker-like sequencer built with Rust and egui.
 
 **Latest changes**
 
+- Time signature/subdivision/beat system
 - Added mixer
 - Polyphonic tracks (up to 8 voices)
 - Removed all .xm effect commands in preparation of unique approach
@@ -17,7 +18,6 @@ A lightweight cross-platform tracker-like sequencer built with Rust and egui.
 - Make ADSRs easier to use
 - Add an effect macro palette
 - Compound patterns (parts)
-- Inline pattern subdivision
 - Investigate MIDI compatibility
 - ...and more
 

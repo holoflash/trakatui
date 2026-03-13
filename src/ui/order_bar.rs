@@ -3,8 +3,8 @@ use eframe::egui::{self, RichText, Sense, Stroke};
 
 use crate::app::{App, Mode};
 use crate::ui::{
-    COLOR_LAYOUT_BG_DARK, COLOR_PATTERN_CURSOR_BG, COLOR_PATTERN_CURSOR_TEXT,
-    COLOR_PATTERN_PLAYBACK_HIGHLIGHT, COLOR_PATTERN_PLAYBACK_TEXT, COLOR_PATTERN_SUBDIVISION,
+    COLOR_LAYOUT_BG_DARK, COLOR_PATTERN_BEATMARKER, COLOR_PATTERN_CURSOR_BG,
+    COLOR_PATTERN_CURSOR_TEXT, COLOR_PATTERN_PLAYBACK_HIGHLIGHT, COLOR_PATTERN_PLAYBACK_TEXT,
     COLOR_TEXT, COLOR_TEXT_DIM,
 };
 
@@ -93,7 +93,7 @@ pub fn draw_order_bar(ctx: &egui::Context, app: &mut App) {
                         } else if is_current && app.mode == Mode::Edit {
                             (COLOR_PATTERN_CURSOR_BG, COLOR_PATTERN_CURSOR_TEXT)
                         } else if is_current {
-                            (COLOR_PATTERN_SUBDIVISION, COLOR_TEXT)
+                            (COLOR_PATTERN_BEATMARKER, COLOR_TEXT)
                         } else {
                             (COLOR_LAYOUT_BG_DARK, COLOR_TEXT_DIM)
                         };
@@ -106,7 +106,7 @@ pub fn draw_order_bar(ctx: &egui::Context, app: &mut App) {
 
                         ui.painter().rect_filled(rect, 0.0, bg);
 
-                        let stroke_color = COLOR_PATTERN_SUBDIVISION;
+                        let stroke_color = COLOR_PATTERN_BEATMARKER;
                         ui.painter().rect_stroke(
                             rect,
                             0.0,
