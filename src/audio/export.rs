@@ -7,13 +7,11 @@ use super::mixer::{self, SAMPLE_RATE};
 pub fn export_wav(
     patterns: &[crate::project::Pattern],
     order: &[usize],
-    bpm: u16,
-    rows_per_beat: usize,
     path: &Path,
     tracks: &[crate::project::Track],
     master_volume: f32,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut source = mixer::export_source(patterns, order, bpm, rows_per_beat, tracks, master_volume);
+    let mut source = mixer::export_source(patterns, order, tracks, master_volume);
 
     let spec = WavSpec {
         channels: 2,

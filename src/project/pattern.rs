@@ -37,6 +37,11 @@ pub enum Cell {
 pub struct Pattern {
     pub channels: usize,
     pub rows: usize,
+    pub bpm: u16,
+    pub time_sig_numerator: u8,
+    pub time_sig_denominator: u8,
+    pub note_value: u8,
+    pub measures: u8,
     pub data: Vec<Vec<Vec<Cell>>>,
 }
 
@@ -45,8 +50,37 @@ impl Pattern {
         Self {
             channels,
             rows,
+            bpm: 120,
+            time_sig_numerator: 4,
+            time_sig_denominator: 4,
+            note_value: 4,
+            measures: 1,
             data: vec![vec![vec![Cell::Empty; rows]]; channels],
         }
+    }
+
+    pub fn new_from(source: &Pattern, channels: usize) -> Self {
+        let rows = source.computed_rows();
+        Self {
+            channels,
+            rows,
+            bpm: source.bpm,
+            time_sig_numerator: source.time_sig_numerator,
+            time_sig_denominator: source.time_sig_denominator,
+            note_value: source.note_value,
+            measures: source.measures,
+            data: vec![vec![vec![Cell::Empty; rows]]; channels],
+        }
+    }
+
+    pub fn computed_rows(&self) -> usize {
+        self.time_sig_numerator as usize
+            * self.note_value as usize
+            * self.measures as usize
+    }
+
+    pub fn rows_per_beat(&self) -> usize {
+        self.note_value as usize
     }
 
     pub fn get(&self, channel: usize, voice: usize, row: usize) -> Cell {
@@ -141,5 +175,55 @@ mod tests {
         assert_eq!(pat.get(0, 2, 4), Cell::NoteOn(Note::new(60)));
         pat.set_voice_count(0, 1);
         assert_eq!(pat.voice_count(0), 1);
+    }
+
+    #[test]
+    fn default_pattern_settings() {
+        let pat = Pattern::new(1, 16);
+        assert_eq!(pat.bpm, 120);
+        assert_eq!(pat.time_sig_numerator, 4);
+        assert_eq!(pat.time_sig_denominator, 4);
+        assert_eq!(pat.note_value, 4);
+        assert_eq!(pat.measures, 1);
+        assert_eq!(pat.computed_rows(), 16);
+        assert_eq!(pat.rows_per_beat(), 4);
+    }
+
+    #[test]
+    fn computed_rows_various() {
+        let mut pat = Pattern::new(1, 16);
+        pat.time_sig_numerator = 4;
+        pat.note_value = 16;
+        pat.measures = 2;
+        assert_eq!(pat.computed_rows(), 128);
+
+        pat.time_sig_numerator = 7;
+        pat.note_value = 8;
+        pat.measures = 1;
+        assert_eq!(pat.computed_rows(), 56);
+
+        pat.time_sig_numerator = 3;
+        pat.note_value = 4;
+        pat.measures = 3;
+        assert_eq!(pat.computed_rows(), 36);
+    }
+
+    #[test]
+    fn new_from_inherits_settings() {
+        let mut source = Pattern::new(2, 16);
+        source.bpm = 140;
+        source.time_sig_numerator = 7;
+        source.time_sig_denominator = 8;
+        source.note_value = 8;
+        source.measures = 2;
+
+        let child = Pattern::new_from(&source, 3);
+        assert_eq!(child.bpm, 140);
+        assert_eq!(child.time_sig_numerator, 7);
+        assert_eq!(child.time_sig_denominator, 8);
+        assert_eq!(child.note_value, 8);
+        assert_eq!(child.measures, 2);
+        assert_eq!(child.channels, 3);
+        assert_eq!(child.rows, source.computed_rows());
     }
 }

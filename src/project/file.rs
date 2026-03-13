@@ -70,7 +70,7 @@ mod tests {
         save(&project, &path).expect("save failed");
         let loaded = load(&path).expect("load failed");
 
-        assert_eq!(loaded.bpm, project.bpm);
+        assert_eq!(loaded.patterns[0].bpm, project.patterns[0].bpm);
         assert_eq!(loaded.order, project.order);
         assert_eq!(loaded.patterns.len(), project.patterns.len());
         assert_eq!(loaded.tracks.len(), project.tracks.len());

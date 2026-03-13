@@ -158,13 +158,14 @@ pub fn draw_order_bar(ctx: &egui::Context, app: &mut App) {
                 app.cursor.row = 0;
             }
             OrderAction::NewPattern => {
-                let channels = app.project.current_pattern().channels;
-                let rows = app.project.current_pattern().rows;
+                let current = app.project.current_pattern();
+                let channels = current.channels;
                 let new_idx = find_unused_pattern(app).unwrap_or_else(|| {
                     let idx = app.project.patterns.len();
+                    let current = app.project.current_pattern();
                     app.project
                         .patterns
-                        .push(crate::project::Pattern::new(channels, rows));
+                        .push(crate::project::Pattern::new_from(current, channels));
                     idx
                 });
                 let insert_pos = app.project.order.len();

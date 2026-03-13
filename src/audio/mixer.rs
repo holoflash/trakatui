@@ -94,8 +94,6 @@ pub enum Command {
 }
 
 pub struct PlaybackSettings {
-    pub bpm: u16,
-    pub rows_per_beat: usize,
     pub master_volume: f32,
     pub tracks: Vec<Track>,
     pub muted_channels: Vec<bool>,
@@ -104,6 +102,8 @@ pub struct PlaybackSettings {
 pub struct PatternSnapshot {
     pub channels: usize,
     pub rows: usize,
+    pub bpm: u16,
+    pub rows_per_beat: usize,
     pub data: Vec<Vec<Vec<Cell>>>,
 }
 
@@ -112,6 +112,8 @@ impl PatternSnapshot {
         Self {
             channels: pattern.channels,
             rows: pattern.rows,
+            bpm: pattern.bpm,
+            rows_per_beat: pattern.rows_per_beat(),
             data: pattern.data.clone(),
         }
     }
@@ -602,11 +604,6 @@ impl TrackerSource {
                 }
                 Command::UpdateSettings { settings } => {
                     if self.playing {
-                        let new_spt =
-                            compute_samples_per_tick(settings.bpm, settings.rows_per_beat);
-                        if (new_spt - self.samples_per_tick).abs() > f64::EPSILON {
-                            self.samples_per_tick = new_spt;
-                        }
                         self.master_volume = settings.master_volume;
                         self.muted_channels = settings.muted_channels.clone();
 
@@ -709,7 +706,9 @@ impl TrackerSource {
         self.preview_channels.clear();
         self.preview_ticks_remaining = 0;
 
-        self.samples_per_tick = compute_samples_per_tick(settings.bpm, settings.rows_per_beat);
+        let pat_idx = order[start_order];
+        let initial_pat = &patterns[pat_idx];
+        self.samples_per_tick = compute_samples_per_tick(initial_pat.bpm, initial_pat.rows_per_beat);
         self.master_volume = settings.master_volume;
         self.current_row = start_row;
         self.current_order_idx = start_order;
@@ -795,6 +794,13 @@ impl TrackerSource {
                     self.current_order_idx = next_order % self.order.len();
                     self.playback_order
                         .store(self.current_order_idx, Ordering::Relaxed);
+                    let new_pat_idx = self.order[self.current_order_idx];
+                    if let Some(new_pat) = self.patterns.get(new_pat_idx) {
+                        let new_spt = compute_samples_per_tick(new_pat.bpm, new_pat.rows_per_beat);
+                        if (new_spt - self.samples_per_tick).abs() > f64::EPSILON {
+                            self.samples_per_tick = new_spt;
+                        }
+                    }
                 }
                 self.playback_row.store(self.current_row, Ordering::Relaxed);
             }
@@ -925,8 +931,6 @@ impl Source for TrackerSource {
 pub fn export_source(
     patterns: &[crate::project::Pattern],
     order: &[usize],
-    bpm: u16,
-    rows_per_beat: usize,
     tracks: &[Track],
     master_volume: f32,
 ) -> TrackerSource {
@@ -939,8 +943,6 @@ pub fn export_source(
         .map(|p| Arc::new(PatternSnapshot::from_pattern(p)))
         .collect();
     let settings = Arc::new(PlaybackSettings {
-        bpm,
-        rows_per_beat,
         master_volume,
         tracks: tracks.to_vec(),
         muted_channels: Vec::new(),
@@ -977,8 +979,6 @@ mod tests {
     fn play_cmd(pattern: &crate::project::Pattern) -> Command {
         let snapshot = Arc::new(PatternSnapshot::from_pattern(pattern));
         let settings = Arc::new(PlaybackSettings {
-            bpm: 120,
-            rows_per_beat: 4,
             master_volume: 1.0,
             tracks: Track::defaults(),
             muted_channels: Vec::new(),

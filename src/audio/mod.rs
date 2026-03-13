@@ -120,8 +120,6 @@ impl AudioEngine {
         patterns: &[Pattern],
         order: &[usize],
         tracks: &[Track],
-        bpm: u16,
-        rows_per_beat: usize,
         master_volume: f32,
         muted_channels: &[bool],
     ) {
@@ -130,8 +128,6 @@ impl AudioEngine {
             .map(|p| Arc::new(PatternSnapshot::from_pattern(p)))
             .collect();
         let settings = Arc::new(PlaybackSettings {
-            bpm,
-            rows_per_beat,
             master_volume,
             tracks: tracks.to_vec(),
             muted_channels: muted_channels.to_vec(),
@@ -152,14 +148,10 @@ impl AudioEngine {
     pub fn update_settings(
         &self,
         tracks: &[Track],
-        bpm: u16,
-        rows_per_beat: usize,
         master_volume: f32,
         muted_channels: &[bool],
     ) {
         let settings = Arc::new(PlaybackSettings {
-            bpm,
-            rows_per_beat,
             master_volume,
             tracks: tracks.to_vec(),
             muted_channels: muted_channels.to_vec(),

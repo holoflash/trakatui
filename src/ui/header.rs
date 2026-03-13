@@ -140,9 +140,10 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                 app.text_editing = false;
 
                 draw_field(ui, "BPM");
+                let mut bpm = app.project.current_pattern().bpm;
                 let r = ui
                     .add(
-                        egui::DragValue::new(&mut app.project.bpm)
+                        egui::DragValue::new(&mut bpm)
                             .range(20..=666)
                             .speed(0.5),
                     )
@@ -150,9 +151,12 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                 if r.has_focus() {
                     app.text_editing = true;
                 }
+                if r.changed() {
+                    app.project.current_pattern_mut().bpm = bpm;
+                }
 
                 draw_field(ui, "SIG");
-                let mut num = app.project.time_sig_numerator;
+                let mut num = app.project.current_pattern().time_sig_numerator;
                 let r = ui
                     .add(egui::DragValue::new(&mut num).range(1..=32).speed(0.2))
                     .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
@@ -160,8 +164,8 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                     app.text_editing = true;
                 }
                 if r.changed() {
-                    app.project.time_sig_numerator = num;
-                    let new_rows = app.project.computed_rows();
+                    app.project.current_pattern_mut().time_sig_numerator = num;
+                    let new_rows = app.project.current_pattern().computed_rows();
                     app.project.current_pattern_mut().resize(new_rows);
                     if app.cursor.row >= new_rows {
                         app.cursor.row = new_rows.saturating_sub(1);
@@ -174,7 +178,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                         .color(COLOR_TEXT_DIM),
                 );
 
-                let mut den = app.project.time_sig_denominator;
+                let mut den = app.project.current_pattern().time_sig_denominator;
                 let r = ui
                     .add(egui::DragValue::new(&mut den).range(1..=32).speed(0.2))
                     .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
@@ -182,11 +186,11 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                     app.text_editing = true;
                 }
                 if r.changed() {
-                    app.project.time_sig_denominator = den;
+                    app.project.current_pattern_mut().time_sig_denominator = den;
                 }
 
                 draw_field(ui, "NOTE");
-                let mut nv = app.project.note_value;
+                let mut nv = app.project.current_pattern().note_value;
                 let r = ui
                     .add(egui::DragValue::new(&mut nv).range(1..=64).speed(0.2))
                     .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
@@ -194,8 +198,8 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                     app.text_editing = true;
                 }
                 if r.changed() {
-                    app.project.note_value = nv;
-                    let new_rows = app.project.computed_rows();
+                    app.project.current_pattern_mut().note_value = nv;
+                    let new_rows = app.project.current_pattern().computed_rows();
                     app.project.current_pattern_mut().resize(new_rows);
                     if app.cursor.row >= new_rows {
                         app.cursor.row = new_rows.saturating_sub(1);
@@ -203,7 +207,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                 }
 
                 draw_field(ui, "BARS");
-                let mut bars = app.project.measures;
+                let mut bars = app.project.current_pattern().measures;
                 let r = ui
                     .add(egui::DragValue::new(&mut bars).range(1..=32).speed(0.2))
                     .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
@@ -211,8 +215,8 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                     app.text_editing = true;
                 }
                 if r.changed() {
-                    app.project.measures = bars;
-                    let new_rows = app.project.computed_rows();
+                    app.project.current_pattern_mut().measures = bars;
+                    let new_rows = app.project.current_pattern().computed_rows();
                     app.project.current_pattern_mut().resize(new_rows);
                     if app.cursor.row >= new_rows {
                         app.cursor.row = new_rows.saturating_sub(1);
