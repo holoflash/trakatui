@@ -117,6 +117,8 @@ impl PatternSnapshot {
     }
 }
 
+const RELEASE_FADE_MIN_SAMPLES: u32 = 220;
+
 struct Channel {
     active: bool,
     sample_data: Arc<SampleData>,
@@ -134,6 +136,8 @@ struct Channel {
     note_released: bool,
     fadeout_vol: u32,
     vol_fadeout_per_tick: u16,
+    release_fade_remaining: u32,
+    release_fade_total: u32,
 
     coarse_tune: i8,
     fine_tune: i8,
@@ -176,6 +180,8 @@ impl Channel {
             note_released: false,
             fadeout_vol: 65536,
             vol_fadeout_per_tick: 0,
+            release_fade_remaining: 0,
+            release_fade_total: 0,
 
             coarse_tune: 0,
             fine_tune: 0,
@@ -260,6 +266,8 @@ impl Channel {
         self.note_released = false;
         self.fadeout_vol = 65536;
         self.vol_fadeout_per_tick = vol_fadeout_per_tick;
+        self.release_fade_remaining = 0;
+        self.release_fade_total = 0;
 
         self.pitch_env_enabled = pitch_env_enabled;
         self.pitch_env_depth = pitch_env_depth;
@@ -285,10 +293,12 @@ impl Channel {
         }
     }
 
-    fn note_off(&mut self) {
+    fn note_off(&mut self, fade_samples: u32) {
         self.note_released = true;
         if !self.vol_envelope.enabled {
-            self.active = false;
+            let total = fade_samples.max(RELEASE_FADE_MIN_SAMPLES);
+            self.release_fade_remaining = total;
+            self.release_fade_total = total;
         }
     }
 
@@ -372,6 +382,17 @@ impl Channel {
             1.0
         };
 
+        let release_factor = if self.release_fade_remaining > 0 {
+            self.release_fade_remaining -= 1;
+            let factor = self.release_fade_remaining as f32 / self.release_fade_total as f32;
+            if self.release_fade_remaining == 0 {
+                self.active = false;
+            }
+            factor
+        } else {
+            1.0
+        };
+
         let data = &self.sample_data;
         let samples = &data.samples_f32;
         let len = samples.len();
@@ -435,7 +456,7 @@ impl Channel {
             sample
         };
 
-        filtered * env * self.volume * fadeout_factor
+        filtered * env * self.volume * fadeout_factor * release_factor
     }
 
     #[inline]
@@ -747,7 +768,7 @@ impl TrackerSource {
                         );
                         channel.set_panning(track.default_panning);
                     }
-                    Cell::NoteOff => channel.note_off(),
+                    Cell::NoteOff => channel.note_off(self.samples_per_tick as u32),
                     Cell::Empty => {}
                 }
             }
@@ -797,7 +818,7 @@ impl TrackerSource {
             self.preview_ticks_remaining -= 1;
             if self.preview_ticks_remaining == 0 {
                 for pch in &mut self.preview_channels {
-                    pch.note_off();
+                    pch.note_off(RELEASE_FADE_MIN_SAMPLES);
                 }
             }
         }
