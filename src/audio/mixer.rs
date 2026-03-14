@@ -15,14 +15,15 @@ const TICKS_PER_ROW: u16 = 6;
 
 pub const SCOPE_SIZE: usize = 256;
 const SCOPE_DOWNSAMPLE: usize = 4;
+const COMMAND_CHECK_INTERVAL: usize = 32;
 
 #[inline]
-fn hermite_interpolate(s0: f32, s1: f32, s2: f32, s3: f32, t: f32) -> f32 {
-    let c0 = s1;
-    let c1 = 0.5 * (s2 - s0);
-    let c2 = s0 - 2.5 * s1 + 2.0 * s2 - 0.5 * s3;
-    let c3 = 0.5 * (s3 - s0) + 1.5 * (s1 - s2);
-    ((c3 * t + c2) * t + c1) * t + c0
+fn hermite_interpolate(prev: f32, current: f32, next: f32, next2: f32, fraction: f32) -> f32 {
+    let c0 = current;
+    let c1 = 0.5 * (next - prev);
+    let c2 = prev - 2.5 * current + 2.0 * next - 0.5 * next2;
+    let c3 = 0.5 * (next2 - prev) + 1.5 * (current - next);
+    ((c3 * fraction + c2) * fraction + c1) * fraction + c0
 }
 
 pub struct ScopeBuffer {
@@ -38,24 +39,24 @@ impl ScopeBuffer {
         }
     }
 
-    pub fn push(&self, val: f32) {
+    pub fn push(&self, sample: f32) {
         let pos = self.write_pos.fetch_add(1, Ordering::Relaxed) % SCOPE_SIZE;
-        self.samples[pos].store(val.to_bits(), Ordering::Relaxed);
+        self.samples[pos].store(sample.to_bits(), Ordering::Relaxed);
     }
 
     pub fn read_all(&self) -> [f32; SCOPE_SIZE] {
-        let wp = self.write_pos.load(Ordering::Relaxed);
+        let write_position = self.write_pos.load(Ordering::Relaxed);
         let mut out = [0.0f32; SCOPE_SIZE];
         for (i, slot) in out.iter_mut().enumerate() {
-            let idx = (wp + i) % SCOPE_SIZE;
+            let idx = (write_position + i) % SCOPE_SIZE;
             *slot = f32::from_bits(self.samples[idx].load(Ordering::Relaxed));
         }
         out
     }
 
     pub fn clear(&self) {
-        for s in self.samples.iter() {
-            s.store(0u32, Ordering::Relaxed);
+        for sample in self.samples.iter() {
+            sample.store(0u32, Ordering::Relaxed);
         }
     }
 }
@@ -153,13 +154,13 @@ struct Channel {
     filter: FilterSettings,
     filter_env_tick: u16,
     cached_filter_env: f32,
-    filt_z1: f32,
-    filt_z2: f32,
-    filt_a0: f32,
-    filt_a1: f32,
-    filt_a2: f32,
-    filt_b1: f32,
-    filt_b2: f32,
+    filter_state_1: f32,
+    filter_state_2: f32,
+    filter_b0: f32,
+    filter_b1: f32,
+    filter_b2: f32,
+    filter_a1: f32,
+    filter_a2: f32,
 
     region_start: usize,
     region_end: usize,
@@ -197,13 +198,13 @@ impl Channel {
             filter: FilterSettings::default(),
             filter_env_tick: 0,
             cached_filter_env: 1.0,
-            filt_z1: 0.0,
-            filt_z2: 0.0,
-            filt_a0: 1.0,
-            filt_a1: 0.0,
-            filt_a2: 0.0,
-            filt_b1: 0.0,
-            filt_b2: 0.0,
+            filter_state_1: 0.0,
+            filter_state_2: 0.0,
+            filter_b0: 1.0,
+            filter_b1: 0.0,
+            filter_b2: 0.0,
+            filter_a1: 0.0,
+            filter_a2: 0.0,
 
             region_start: 0,
             region_end: 0,
@@ -211,9 +212,9 @@ impl Channel {
     }
 
     #[inline]
-    fn set_panning(&mut self, pan: f32) {
-        self.pan_l = (1.0 - pan).sqrt();
-        self.pan_r = pan.sqrt();
+    fn set_panning(&mut self, panning: f32) {
+        self.pan_l = (1.0 - panning).sqrt();
+        self.pan_r = panning.sqrt();
     }
 
     fn compute_sample_step(
@@ -289,8 +290,8 @@ impl Channel {
         } else {
             1.0
         };
-        self.filt_z1 = 0.0;
-        self.filt_z2 = 0.0;
+        self.filter_state_1 = 0.0;
+        self.filter_state_2 = 0.0;
         if self.filter.enabled {
             self.update_filter_coeffs();
         }
@@ -306,37 +307,37 @@ impl Channel {
     }
 
     fn update_filter_coeffs(&mut self) {
-        let env_mod = if self.filter.envelope.enabled {
+        let envelope_mod = if self.filter.envelope.enabled {
             let mod_octaves = self.filter.env_depth * (self.cached_filter_env * 2.0 - 1.0) * 4.0;
-            (mod_octaves).exp2()
+            mod_octaves.exp2()
         } else {
             1.0
         };
 
-        let cutoff = (self.filter.cutoff * env_mod).clamp(20.0, 20000.0);
-        let q = 0.5 + self.filter.resonance * 9.5;
+        let cutoff = (self.filter.cutoff * envelope_mod).clamp(20.0, 20000.0);
+        let quality_factor = 0.5 + self.filter.resonance * 9.5;
 
         let omega = std::f32::consts::TAU * cutoff / SAMPLE_RATE as f32;
-        let sin_w = omega.sin();
-        let cos_w = omega.cos();
-        let alpha = sin_w / (2.0 * q);
+        let sin_omega = omega.sin();
+        let cos_omega = omega.cos();
+        let alpha = sin_omega / (2.0 * quality_factor);
 
         let (b0, b1, b2, a0, a1, a2) = match self.filter.filter_type {
             FilterType::LowPass => {
-                let b1 = 1.0 - cos_w;
+                let b1 = 1.0 - cos_omega;
                 let b0 = b1 / 2.0;
                 let b2 = b0;
                 let a0 = 1.0 + alpha;
-                let a1 = -2.0 * cos_w;
+                let a1 = -2.0 * cos_omega;
                 let a2 = 1.0 - alpha;
                 (b0, b1, b2, a0, a1, a2)
             }
             FilterType::HighPass => {
-                let b1 = -(1.0 + cos_w);
-                let b0 = (1.0 + cos_w) / 2.0;
+                let b1 = -(1.0 + cos_omega);
+                let b0 = (1.0 + cos_omega) / 2.0;
                 let b2 = b0;
                 let a0 = 1.0 + alpha;
-                let a1 = -2.0 * cos_w;
+                let a1 = -2.0 * cos_omega;
                 let a2 = 1.0 - alpha;
                 (b0, b1, b2, a0, a1, a2)
             }
@@ -345,84 +346,56 @@ impl Channel {
                 let b1 = 0.0;
                 let b2 = -alpha;
                 let a0 = 1.0 + alpha;
-                let a1 = -2.0 * cos_w;
+                let a1 = -2.0 * cos_omega;
                 let a2 = 1.0 - alpha;
                 (b0, b1, b2, a0, a1, a2)
             }
         };
 
         let inv_a0 = 1.0 / a0;
-        self.filt_a0 = b0 * inv_a0;
-        self.filt_a1 = b1 * inv_a0;
-        self.filt_a2 = b2 * inv_a0;
-        self.filt_b1 = a1 * inv_a0;
-        self.filt_b2 = a2 * inv_a0;
+        self.filter_b0 = b0 * inv_a0;
+        self.filter_b1 = b1 * inv_a0;
+        self.filter_b2 = b2 * inv_a0;
+        self.filter_a1 = a1 * inv_a0;
+        self.filter_a2 = a2 * inv_a0;
     }
 
     #[inline]
     fn apply_filter(&mut self, input: f32) -> f32 {
-        let output = self.filt_a0 * input + self.filt_z1;
-        self.filt_z1 = self.filt_a1 * input - self.filt_b1 * output + self.filt_z2;
-        self.filt_z2 = self.filt_a2 * input - self.filt_b2 * output;
+        let output = self.filter_b0 * input + self.filter_state_1;
+        self.filter_state_1 = self.filter_b1 * input - self.filter_a1 * output + self.filter_state_2;
+        self.filter_state_2 = self.filter_b2 * input - self.filter_a2 * output;
         output
     }
 
     #[inline]
-    fn next_sample(&mut self) -> f32 {
-        if !self.active {
-            return 0.0;
-        }
-
-        let env = self.cached_env_amp;
-        if self.note_released && env <= 0.0 && self.fadeout_vol == 0 {
-            self.active = false;
-            return 0.0;
-        }
-
-        let fadeout_factor = if self.vol_envelope.enabled {
-            self.fadeout_vol as f32 / 65536.0
-        } else {
-            1.0
-        };
-
-        let release_factor = if self.release_fade_remaining > 0 {
-            self.release_fade_remaining -= 1;
-            let factor = self.release_fade_remaining as f32 / self.release_fade_total as f32;
-            if self.release_fade_remaining == 0 {
-                self.active = false;
-            }
-            factor
-        } else {
-            1.0
-        };
-
-        let data = &self.sample_data;
-        let samples = &data.samples_f32;
+    fn read_interpolated_sample(&self) -> f32 {
+        let samples = &self.sample_data.samples_f32;
         let len = samples.len();
 
         if len == 0 {
             return 0.0;
         }
 
-        let idx = self.sample_position as usize;
-        let frac = (self.sample_position - idx as f64) as f32;
+        let sample_index = self.sample_position as usize;
+        if sample_index >= len {
+            return 0.0;
+        }
 
-        let sample = if idx >= len {
-            0.0
-        } else {
-            let s0 = if idx > 0 {
-                samples[idx - 1]
-            } else {
-                samples[idx]
-            };
-            let s1 = samples[idx];
-            let s2 = if idx + 1 < len { samples[idx + 1] } else { s1 };
-            let s3 = if idx + 2 < len { samples[idx + 2] } else { s2 };
-            hermite_interpolate(s0, s1, s2, s3, frac)
-        };
+        let fractional_position = (self.sample_position - sample_index as f64) as f32;
+        let prev = if sample_index > 0 { samples[sample_index - 1] } else { samples[sample_index] };
+        let current = samples[sample_index];
+        let next = if sample_index + 1 < len { samples[sample_index + 1] } else { current };
+        let next2 = if sample_index + 2 < len { samples[sample_index + 2] } else { next };
 
+        hermite_interpolate(prev, current, next, next2, fractional_position)
+    }
+
+    #[inline]
+    fn advance_sample_position(&mut self) -> bool {
         self.sample_position += self.sample_step * self.sample_direction;
 
+        let data = &self.sample_data;
         if data.loop_length > 0 {
             let loop_end = data.loop_end() as f64;
             let loop_start = data.loop_start as f64;
@@ -443,27 +416,74 @@ impl Channel {
                 }
                 LoopType::None => {
                     if self.sample_position >= self.region_end as f64 {
-                        self.active = false;
-                        return 0.0;
+                        return false;
                     }
                 }
             }
         } else if self.sample_position >= self.region_end as f64 {
+            return false;
+        }
+
+        true
+    }
+
+    #[inline]
+    fn compute_volume_gain(&mut self) -> Option<f32> {
+        let envelope_amplitude = self.cached_env_amp;
+        if self.note_released && envelope_amplitude <= 0.0 && self.fadeout_vol == 0 {
+            return None;
+        }
+
+        let fadeout_factor = if self.vol_envelope.enabled {
+            self.fadeout_vol as f32 / 65536.0
+        } else {
+            1.0
+        };
+
+        let release_factor = if self.release_fade_remaining > 0 {
+            self.release_fade_remaining -= 1;
+            let factor = self.release_fade_remaining as f32 / self.release_fade_total as f32;
+            if self.release_fade_remaining == 0 {
+                self.active = false;
+            }
+            factor
+        } else {
+            1.0
+        };
+
+        Some(envelope_amplitude * self.volume * fadeout_factor * release_factor)
+    }
+
+    #[inline]
+    fn next_sample(&mut self) -> f32 {
+        if !self.active {
+            return 0.0;
+        }
+
+        let volume_gain = match self.compute_volume_gain() {
+            Some(gain) => gain,
+            None => {
+                self.active = false;
+                return 0.0;
+            }
+        };
+
+        let raw_sample = self.read_interpolated_sample();
+
+        if !self.advance_sample_position() {
             self.active = false;
             return 0.0;
         }
 
-        let filtered = if self.filter.enabled {
-            self.apply_filter(sample)
+        if self.filter.enabled {
+            self.apply_filter(raw_sample) * volume_gain
         } else {
-            sample
-        };
-
-        filtered * env * self.volume * fadeout_factor * release_factor
+            raw_sample * volume_gain
+        }
     }
 
     #[inline]
-    fn tick_update(&mut self) {
+    fn tick_envelopes(&mut self) {
         if !self.active {
             return;
         }
@@ -571,8 +591,30 @@ impl TrackerSource {
             stop_at_end: false,
             channel_scopes,
             scope_counter: 0,
-            command_check_counter: 32,
+            command_check_counter: COMMAND_CHECK_INTERVAL,
         }
+    }
+
+    fn reset_state(&mut self) {
+        self.playing = false;
+        for track_voices in &mut self.channels {
+            for voice in track_voices {
+                *voice = Channel::new();
+            }
+        }
+        self.current_row = 0;
+        self.current_order_idx = 0;
+        self.tick_sample_counter = 0.0;
+        self.tick_in_row = 0;
+        self.samples_per_tick = compute_samples_per_tick(120, 4);
+        self.master_volume = 1.0;
+        self.stereo_phase = false;
+        self.right_sample = 0.0;
+        self.muted_channels.clear();
+        self.stop_at_end = false;
+        self.patterns.clear();
+        self.order.clear();
+        self.settings = None;
     }
 
     fn process_commands(&mut self) {
@@ -586,39 +628,19 @@ impl TrackerSource {
                     settings,
                     stop_at_end,
                 } => self.start_playback(start_row, start_order, patterns, order, settings, stop_at_end),
-                Command::Stop => {
-                    self.playing = false;
-                    for track_voices in &mut self.channels {
-                        for ch in track_voices {
-                            *ch = Channel::new();
-                        }
-                    }
-                    self.current_row = 0;
-                    self.current_order_idx = 0;
-                    self.tick_sample_counter = 0.0;
-                    self.tick_in_row = 0;
-                    self.samples_per_tick = compute_samples_per_tick(120, 4);
-                    self.master_volume = 1.0;
-                    self.stereo_phase = false;
-                    self.right_sample = 0.0;
-                    self.muted_channels.clear();
-                    self.stop_at_end = false;
-                    self.patterns.clear();
-                    self.order.clear();
-                    self.settings = None;
-                }
+                Command::Stop => self.reset_state(),
                 Command::UpdateSettings { settings } => {
                     if self.playing {
                         self.master_volume = settings.master_volume;
                         self.muted_channels = settings.muted_channels.clone();
 
-                        for (i, track) in settings.tracks.iter().enumerate() {
+                        for (track_index, track) in settings.tracks.iter().enumerate() {
                             let needed = track.polyphony.max(1) as usize;
-                            if i < self.channels.len() {
-                                while self.channels[i].len() < needed {
-                                    let mut ch = Channel::new();
-                                    ch.set_panning(track.default_panning);
-                                    self.channels[i].push(ch);
+                            if track_index < self.channels.len() {
+                                while self.channels[track_index].len() < needed {
+                                    let mut voice = Channel::new();
+                                    voice.set_panning(track.default_panning);
+                                    self.channels[track_index].push(voice);
                                 }
                             }
                         }
@@ -634,8 +656,8 @@ impl TrackerSource {
                             self.current_order_idx = 0;
                             self.current_row = 0;
                         }
-                        let pat_idx = self.order[self.current_order_idx];
-                        if self.current_row >= self.patterns[pat_idx].rows {
+                        let pattern_index = self.order[self.current_order_idx];
+                        if self.current_row >= self.patterns[pattern_index].rows {
                             self.current_row = 0;
                         }
                     }
@@ -655,20 +677,20 @@ impl TrackerSource {
                     pitch_envelope,
                     filter,
                 } => {
-                    let fadeout = if vol_envelope.enabled && vol_fadeout == 0 {
+                    let effective_fadeout = if vol_envelope.enabled && vol_fadeout == 0 {
                         256
                     } else {
                         vol_fadeout
                     };
                     self.preview_channels.clear();
                     for &freq in &frequencies {
-                        let mut ch = Channel::new();
-                        ch.trigger(
+                        let mut voice = Channel::new();
+                        voice.trigger(
                             freq,
                             volume,
                             vol_envelope.clone(),
                             &sample_data,
-                            fadeout,
+                            effective_fadeout,
                             coarse_tune,
                             fine_tune,
                             pitch_env_enabled,
@@ -676,8 +698,8 @@ impl TrackerSource {
                             pitch_envelope.clone(),
                             (*filter).clone(),
                         );
-                        ch.set_panning(panning);
-                        self.preview_channels.push(ch);
+                        voice.set_panning(panning);
+                        self.preview_channels.push(voice);
                     }
                     self.preview_ticks_remaining = PREVIEW_RELEASE_TICKS;
                     if !self.playing {
@@ -702,9 +724,9 @@ impl TrackerSource {
             let voice_count = track.polyphony.max(1) as usize;
             let mut voices = Vec::with_capacity(voice_count);
             for _ in 0..voice_count {
-                let mut ch = Channel::new();
-                ch.set_panning(track.default_panning);
-                voices.push(ch);
+                let mut voice = Channel::new();
+                voice.set_panning(track.default_panning);
+                voices.push(voice);
             }
             self.channels.push(voices);
         }
@@ -712,9 +734,9 @@ impl TrackerSource {
         self.preview_channels.clear();
         self.preview_ticks_remaining = 0;
 
-        let pat_idx = order[start_order];
-        let initial_pat = &patterns[pat_idx];
-        self.samples_per_tick = compute_samples_per_tick(initial_pat.bpm, initial_pat.rows_per_beat);
+        let pattern_index = order[start_order];
+        let initial_pattern = &patterns[pattern_index];
+        self.samples_per_tick = compute_samples_per_tick(initial_pattern.bpm, initial_pattern.rows_per_beat);
         self.master_volume = settings.master_volume;
         self.current_row = start_row;
         self.current_order_idx = start_order;
@@ -734,8 +756,8 @@ impl TrackerSource {
     }
 
     fn process_row(&mut self) {
-        let pat_idx = self.order[self.current_order_idx];
-        let pattern = match self.patterns.get(pat_idx) {
+        let pattern_index = self.order[self.current_order_idx];
+        let pattern = match self.patterns.get(pattern_index) {
             Some(p) => Arc::clone(p),
             None => return,
         };
@@ -743,22 +765,22 @@ impl TrackerSource {
             return;
         };
 
-        for ch_idx in 0..pattern.channels.min(self.channels.len()) {
-            if ch_idx >= settings.tracks.len() {
+        for track_index in 0..pattern.channels.min(self.channels.len()) {
+            if track_index >= settings.tracks.len() {
                 continue;
             }
-            let track = &settings.tracks[ch_idx];
-            let voices_in_pattern = pattern.data[ch_idx].len();
-            let voices_in_mixer = self.channels[ch_idx].len();
+            let track = &settings.tracks[track_index];
+            let voices_in_pattern = pattern.data[track_index].len();
+            let voices_in_mixer = self.channels[track_index].len();
 
-            for voice_idx in 0..voices_in_pattern.min(voices_in_mixer) {
-                let cell = pattern.data[ch_idx][voice_idx][self.current_row];
-                let channel = &mut self.channels[ch_idx][voice_idx];
+            for voice_index in 0..voices_in_pattern.min(voices_in_mixer) {
+                let cell = pattern.data[track_index][voice_index][self.current_row];
+                let voice = &mut self.channels[track_index][voice_index];
 
                 match cell {
                     Cell::NoteOn(note) => {
                         let (sample_data, sample_vol) = track.sample_for_note(note.pitch);
-                        channel.trigger(
+                        voice.trigger(
                             note.frequency(),
                             sample_vol,
                             track.vol_envelope.clone(),
@@ -771,69 +793,85 @@ impl TrackerSource {
                             track.pitch_envelope.clone(),
                             track.filter.clone(),
                         );
-                        channel.set_panning(track.default_panning);
+                        voice.set_panning(track.default_panning);
                     }
-                    Cell::NoteOff => channel.note_off(self.samples_per_tick as u32),
+                    Cell::NoteOff => voice.note_off(self.samples_per_tick as u32),
                     Cell::Empty => {}
                 }
             }
         }
     }
 
+    fn advance_to_next_row(&mut self) {
+        if self.patterns.is_empty() {
+            return;
+        }
+
+        let pattern_index = self.order[self.current_order_idx];
+        let total_rows = self.patterns[pattern_index].rows;
+        self.current_row += 1;
+
+        if self.current_row >= total_rows {
+            self.current_row = 0;
+            let next_order = self.current_order_idx + 1;
+            if next_order >= self.order.len() && self.stop_at_end {
+                self.playing = false;
+                self.playback_ended.store(true, Ordering::Relaxed);
+                return;
+            }
+            self.current_order_idx = next_order % self.order.len();
+            self.playback_order
+                .store(self.current_order_idx, Ordering::Relaxed);
+            let new_pattern_index = self.order[self.current_order_idx];
+            if let Some(new_pattern) = self.patterns.get(new_pattern_index) {
+                let new_samples_per_tick =
+                    compute_samples_per_tick(new_pattern.bpm, new_pattern.rows_per_beat);
+                if (new_samples_per_tick - self.samples_per_tick).abs() > f64::EPSILON {
+                    self.samples_per_tick = new_samples_per_tick;
+                }
+            }
+        }
+        self.playback_row.store(self.current_row, Ordering::Relaxed);
+    }
+
     fn tick(&mut self) {
         if self.playing {
             self.tick_in_row += 1;
-        }
-        if self.playing && self.tick_in_row >= TICKS_PER_ROW {
-            self.tick_in_row = 0;
-            if !self.patterns.is_empty() {
-                let pat_idx = self.order[self.current_order_idx];
-                let rows = self.patterns[pat_idx].rows;
-                self.current_row += 1;
-                if self.current_row >= rows {
-                    self.current_row = 0;
-                    let next_order = self.current_order_idx + 1;
-                    if next_order >= self.order.len() && self.stop_at_end {
-                        self.playing = false;
-                        self.playback_ended.store(true, Ordering::Relaxed);
-                        return;
-                    }
-                    self.current_order_idx = next_order % self.order.len();
-                    self.playback_order
-                        .store(self.current_order_idx, Ordering::Relaxed);
-                    let new_pat_idx = self.order[self.current_order_idx];
-                    if let Some(new_pat) = self.patterns.get(new_pat_idx) {
-                        let new_spt = compute_samples_per_tick(new_pat.bpm, new_pat.rows_per_beat);
-                        if (new_spt - self.samples_per_tick).abs() > f64::EPSILON {
-                            self.samples_per_tick = new_spt;
-                        }
-                    }
+            if self.tick_in_row >= TICKS_PER_ROW {
+                self.tick_in_row = 0;
+                self.advance_to_next_row();
+                if !self.playing {
+                    return;
                 }
-                self.playback_row.store(self.current_row, Ordering::Relaxed);
+                self.process_row();
             }
-            self.process_row();
         }
 
         for track_voices in &mut self.channels {
-            for ch in track_voices.iter_mut() {
-                if ch.active {
-                    ch.tick_update();
-                }
+            for voice in track_voices.iter_mut() {
+                voice.tick_envelopes();
             }
         }
 
-        for pch in &mut self.preview_channels {
-            if pch.active {
-                pch.tick_update();
-            }
+        for preview_voice in &mut self.preview_channels {
+            preview_voice.tick_envelopes();
         }
         if self.preview_ticks_remaining > 0 {
             self.preview_ticks_remaining -= 1;
             if self.preview_ticks_remaining == 0 {
-                for pch in &mut self.preview_channels {
-                    pch.note_off(RELEASE_FADE_MIN_SAMPLES);
+                for preview_voice in &mut self.preview_channels {
+                    preview_voice.note_off(RELEASE_FADE_MIN_SAMPLES);
                 }
             }
+        }
+    }
+
+    #[inline]
+    fn check_commands(&mut self) {
+        self.command_check_counter += 1;
+        if self.command_check_counter >= COMMAND_CHECK_INTERVAL {
+            self.command_check_counter = 0;
+            self.process_commands();
         }
     }
 }
@@ -847,26 +885,14 @@ impl Iterator for TrackerSource {
             return Some(self.right_sample * self.master_volume);
         }
 
+        self.check_commands();
+
         if self.stop_at_end && !self.playing {
-            self.command_check_counter += 1;
-            if self.command_check_counter >= 32 {
-                self.command_check_counter = 0;
-                self.process_commands();
-            }
-            if self.stereo_phase {
-                self.stereo_phase = false;
-            }
             return Some(0.0);
         }
 
-        self.command_check_counter += 1;
-        if self.command_check_counter >= 32 {
-            self.command_check_counter = 0;
-            self.process_commands();
-        }
-
-        let mut mix_l = 0.0_f32;
-        let mut mix_r = 0.0_f32;
+        let mut left_mix = 0.0_f32;
+        let mut right_mix = 0.0_f32;
 
         self.scope_counter += 1;
         let write_scope = self.scope_counter.is_multiple_of(SCOPE_DOWNSAMPLE);
@@ -878,50 +904,52 @@ impl Iterator for TrackerSource {
         }
 
         if self.playing {
-            for (ch_idx, track_voices) in self.channels.iter_mut().enumerate() {
-                let muted = self.muted_channels.get(ch_idx).copied().unwrap_or(false);
-                let mut track_mono = 0.0_f32;
+            for (track_index, track_voices) in self.channels.iter_mut().enumerate() {
+                let muted = self.muted_channels.get(track_index).copied().unwrap_or(false);
+                let mut track_sample_sum = 0.0_f32;
 
-                for ch in track_voices.iter_mut() {
-                    if !ch.active {
+                for voice in track_voices.iter_mut() {
+                    if !voice.active {
                         continue;
                     }
                     if muted {
-                        ch.next_sample();
+                        voice.next_sample();
                         continue;
                     }
-                    let sample = ch.next_sample();
-                    track_mono += sample;
-                    mix_l += sample * ch.pan_l;
-                    mix_r += sample * ch.pan_r;
+                    let sample = voice.next_sample();
+                    track_sample_sum += sample;
+                    left_mix += sample * voice.pan_l;
+                    right_mix += sample * voice.pan_r;
                 }
 
-                if write_scope && let Some(scope) = self.channel_scopes.get(ch_idx) {
-                    scope.push(if muted { 0.0 } else { track_mono });
+                if write_scope {
+                    if let Some(scope) = self.channel_scopes.get(track_index) {
+                        scope.push(if muted { 0.0 } else { track_sample_sum });
+                    }
                 }
             }
         }
 
-        let mut preview_mono = 0.0_f32;
-        for pch in &mut self.preview_channels {
-            let s = pch.next_sample();
-            preview_mono += s;
-            mix_l += s * pch.pan_l;
-            mix_r += s * pch.pan_r;
+        let mut preview_sample_sum = 0.0_f32;
+        for preview_voice in &mut self.preview_channels {
+            let sample = preview_voice.next_sample();
+            preview_sample_sum += sample;
+            left_mix += sample * preview_voice.pan_l;
+            right_mix += sample * preview_voice.pan_r;
         }
 
         if !self.playing
-            && preview_mono.abs() > 0.0
+            && preview_sample_sum.abs() > 0.0
             && write_scope
             && let Some(scope) = self.channel_scopes.first()
         {
-            scope.push(preview_mono);
+            scope.push(preview_sample_sum);
         }
 
-        self.right_sample = mix_r;
+        self.right_sample = right_mix;
         self.stereo_phase = true;
 
-        Some(mix_l * self.master_volume)
+        Some(left_mix * self.master_volume)
     }
 }
 
@@ -984,17 +1012,38 @@ pub fn export_source(
 mod tests {
     use super::*;
 
-    fn make_source() -> (mpsc::Sender<Command>, TrackerSource, Arc<AtomicUsize>) {
-        let (tx, rx) = mpsc::channel();
-        let row = Arc::new(AtomicUsize::new(0));
-        let order = Arc::new(AtomicUsize::new(0));
-        let ended = Arc::new(AtomicBool::new(false));
-        let scopes: Arc<Vec<ScopeBuffer>> = Arc::new(Vec::new());
-        let source = TrackerSource::new(rx, row.clone(), order, ended, scopes);
-        (tx, source, row)
+    #[allow(dead_code)]
+    struct TestHarness {
+        sender: mpsc::Sender<Command>,
+        source: TrackerSource,
+        playback_row: Arc<AtomicUsize>,
+        playback_order: Arc<AtomicUsize>,
+        playback_ended: Arc<AtomicBool>,
     }
 
-    fn play_cmd(pattern: &crate::project::Pattern) -> Command {
+    fn make_test_harness() -> TestHarness {
+        let (sender, receiver) = mpsc::channel();
+        let playback_row = Arc::new(AtomicUsize::new(0));
+        let playback_order = Arc::new(AtomicUsize::new(0));
+        let playback_ended = Arc::new(AtomicBool::new(false));
+        let scopes: Arc<Vec<ScopeBuffer>> = Arc::new(Vec::new());
+        let source = TrackerSource::new(
+            receiver,
+            playback_row.clone(),
+            playback_order.clone(),
+            playback_ended.clone(),
+            scopes,
+        );
+        TestHarness {
+            sender,
+            source,
+            playback_row,
+            playback_order,
+            playback_ended,
+        }
+    }
+
+    fn play_cmd(pattern: &crate::project::Pattern, stop_at_end: bool) -> Command {
         let snapshot = Arc::new(PatternSnapshot::from_pattern(pattern));
         let settings = Arc::new(PlaybackSettings {
             master_volume: 1.0,
@@ -1007,48 +1056,209 @@ mod tests {
             patterns: vec![snapshot],
             order: vec![0],
             settings,
-            stop_at_end: false,
+            stop_at_end,
         }
+    }
+
+    fn advance_samples(source: &mut TrackerSource, count: usize) {
+        for _ in 0..count {
+            source.next();
+        }
+    }
+
+    #[test]
+    fn hermite_interpolation_passthrough() {
+        assert_eq!(hermite_interpolate(0.0, 1.0, 2.0, 3.0, 0.0), 1.0);
+        assert_eq!(hermite_interpolate(5.0, 10.0, 15.0, 20.0, 0.0), 10.0);
+    }
+
+    #[test]
+    fn hermite_interpolation_linear_midpoint() {
+        let result = hermite_interpolate(0.0, 1.0, 2.0, 3.0, 0.5);
+        assert!((result - 1.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn scope_buffer_write_and_read() {
+        let scope = ScopeBuffer::new();
+        scope.push(1.0);
+        scope.push(2.0);
+        scope.push(3.0);
+        let data = scope.read_all();
+        assert_eq!(data[SCOPE_SIZE - 3], 1.0);
+        assert_eq!(data[SCOPE_SIZE - 2], 2.0);
+        assert_eq!(data[SCOPE_SIZE - 1], 3.0);
+    }
+
+    #[test]
+    fn scope_buffer_wraps_around() {
+        let scope = ScopeBuffer::new();
+        for i in 0..(SCOPE_SIZE + 5) {
+            scope.push(i as f32);
+        }
+        let data = scope.read_all();
+        assert_eq!(data[0], 5.0);
+        assert_eq!(data[SCOPE_SIZE - 1], (SCOPE_SIZE + 4) as f32);
+    }
+
+    #[test]
+    fn channel_panning_center() {
+        let mut channel = Channel::new();
+        channel.set_panning(0.5);
+        assert!((channel.pan_l - channel.pan_r).abs() < 1e-6);
+    }
+
+    #[test]
+    fn channel_panning_hard_left() {
+        let mut channel = Channel::new();
+        channel.set_panning(0.0);
+        assert!((channel.pan_l - 1.0).abs() < 1e-6);
+        assert!(channel.pan_r.abs() < 1e-6);
+    }
+
+    #[test]
+    fn channel_panning_hard_right() {
+        let mut channel = Channel::new();
+        channel.set_panning(1.0);
+        assert!(channel.pan_l.abs() < 1e-6);
+        assert!((channel.pan_r - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn channel_inactive_produces_silence() {
+        let mut channel = Channel::new();
+        assert!(!channel.active);
+        assert_eq!(channel.next_sample(), 0.0);
+    }
+
+    #[test]
+    fn channel_note_off_deactivates() {
+        let mut channel = Channel::new();
+        let sample_data = SampleData::sine();
+        channel.trigger(
+            440.0,
+            1.0,
+            VolEnvelope::disabled(),
+            &sample_data,
+            0,
+            0,
+            0,
+            false,
+            12.0,
+            VolEnvelope::disabled(),
+            FilterSettings::default(),
+        );
+        assert!(channel.active);
+
+        channel.note_off(100);
+        for _ in 0..300 {
+            channel.next_sample();
+        }
+        assert!(!channel.active);
+    }
+
+    #[test]
+    fn compute_samples_per_tick_values() {
+        let spt_120 = compute_samples_per_tick(120, 4);
+        assert!((spt_120 - 918.75).abs() < 0.01);
+
+        let spt_240 = compute_samples_per_tick(240, 4);
+        assert!((spt_240 - 918.75 / 2.0).abs() < 0.01);
     }
 
     #[test]
     fn tick_timing_120bpm() {
-        let (tx, mut source, row) = make_source();
+        let mut harness = make_test_harness();
 
         let mut pattern = crate::project::Pattern::new("test".into(), 1, 4);
         pattern.set(0, 0, 0, Cell::NoteOn(crate::project::Note::new(69)));
 
-        tx.send(play_cmd(&pattern)).unwrap();
+        harness.sender.send(play_cmd(&pattern, false)).unwrap();
 
-        for _ in 0..11025 {
-            source.next();
-        }
-        source.next();
-        source.next();
-        assert_eq!(row.load(Ordering::Relaxed), 1);
+        advance_samples(&mut harness.source, 11025);
+        harness.source.next();
+        harness.source.next();
+        assert_eq!(harness.playback_row.load(Ordering::Relaxed), 1);
     }
 
     #[test]
     fn stop_silences_output() {
-        let (tx, mut source, _) = make_source();
+        let mut harness = make_test_harness();
 
         let mut pattern = crate::project::Pattern::new("test".into(), 1, 4);
         pattern.set(0, 0, 0, Cell::NoteOn(crate::project::Note::new(69)));
 
-        tx.send(play_cmd(&pattern)).unwrap();
+        harness.sender.send(play_cmd(&pattern, false)).unwrap();
+
+        advance_samples(&mut harness.source, 100);
+
+        harness.sender.send(Command::Stop).unwrap();
+
+        advance_samples(&mut harness.source, 128);
 
         for _ in 0..100 {
-            source.next();
+            assert_eq!(harness.source.next(), Some(0.0));
         }
+    }
 
-        tx.send(Command::Stop).unwrap();
+    #[test]
+    fn playback_loops_to_beginning() {
+        let mut harness = make_test_harness();
+        let pattern = crate::project::Pattern::new("test".into(), 1, 2);
 
-        for _ in 0..128 {
-            source.next();
-        }
+        harness.sender.send(play_cmd(&pattern, false)).unwrap();
+
+        advance_samples(&mut harness.source, 22060);
+
+        assert_eq!(harness.playback_row.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn playback_stops_at_end() {
+        let mut harness = make_test_harness();
+        let pattern = crate::project::Pattern::new("test".into(), 1, 2);
+
+        harness
+            .sender
+            .send(play_cmd(&pattern, true))
+            .unwrap();
+
+        advance_samples(&mut harness.source, 22060);
+
+        assert!(harness.playback_ended.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn muted_channel_produces_silence() {
+        let mut harness = make_test_harness();
+
+        let mut pattern = crate::project::Pattern::new("test".into(), 1, 4);
+        pattern.set(0, 0, 0, Cell::NoteOn(crate::project::Note::new(69)));
+
+        let snapshot = Arc::new(PatternSnapshot::from_pattern(&pattern));
+        let mut muted = vec![false; 1];
+        muted[0] = true;
+        let settings = Arc::new(PlaybackSettings {
+            master_volume: 1.0,
+            tracks: Track::defaults(),
+            muted_channels: muted,
+        });
+        harness
+            .sender
+            .send(Command::Play {
+                start_row: 0,
+                start_order: 0,
+                patterns: vec![snapshot],
+                order: vec![0],
+                settings,
+                stop_at_end: false,
+            })
+            .unwrap();
+
+        advance_samples(&mut harness.source, 64);
 
         for _ in 0..100 {
-            assert_eq!(source.next(), Some(0.0));
+            assert_eq!(harness.source.next(), Some(0.0));
         }
     }
 }
