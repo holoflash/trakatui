@@ -9,7 +9,7 @@ A lightweight cross-platform tracker-like sequencer built with Rust and egui.
 **Latest changes**
 
 - Pattern arranger!!!
-- BPM, Time signature/subdivison/beat are NOT global but can be set per pattern. This is huuuge!
+- BPM, Time signature/subdivison/beat are NOT global but can be set per pattern!
 - Time signature/subdivision/beat system
 - Added mixer with channel strips
 - Polyphonic tracks (up to 8 voices)
