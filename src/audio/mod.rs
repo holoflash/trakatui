@@ -3,7 +3,7 @@ pub mod mixer;
 
 use std::num::NonZero;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -74,6 +74,7 @@ pub struct AudioEngine {
     pub channel_scopes: Arc<Vec<ScopeBuffer>>,
     pub playback_row: Arc<AtomicUsize>,
     pub playback_order: Arc<AtomicUsize>,
+    pub playback_ended: Arc<AtomicBool>,
     sender: mpsc::Sender<Command>,
 }
 
@@ -82,6 +83,7 @@ impl AudioEngine {
         let (sender, receiver) = mpsc::channel();
         let playback_row = Arc::new(AtomicUsize::new(0));
         let playback_order = Arc::new(AtomicUsize::new(0));
+        let playback_ended = Arc::new(AtomicBool::new(false));
         let peak_level = Arc::new(AtomicU32::new(0u32));
         let channel_scopes: Arc<Vec<ScopeBuffer>> =
             Arc::new((0..32).map(|_| ScopeBuffer::new()).collect());
@@ -90,6 +92,7 @@ impl AudioEngine {
             receiver,
             playback_row.clone(),
             playback_order.clone(),
+            playback_ended.clone(),
             channel_scopes.clone(),
         );
         let monitored = PeakMonitor::new(source, peak_level.clone());
@@ -108,6 +111,7 @@ impl AudioEngine {
             channel_scopes,
             playback_row,
             playback_order,
+            playback_ended,
             sender,
         }
     }
@@ -138,6 +142,7 @@ impl AudioEngine {
             patterns: snapshots,
             order: order.to_vec(),
             settings,
+            stop_at_end: true,
         });
     }
 

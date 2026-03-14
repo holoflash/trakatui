@@ -223,6 +223,18 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                     }
                 }
 
+                draw_field(ui, "REPEAT");
+                let mut rep = app.project.current_pattern().repeat;
+                let r = ui
+                    .add(egui::DragValue::new(&mut rep).range(1..=999).speed(0.2))
+                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+                if r.has_focus() {
+                    app.text_editing = true;
+                }
+                if r.changed() {
+                    app.project.current_pattern_mut().repeat = rep;
+                }
+
                 ui.add_space(24.0);
                 draw_field(ui, "KEY SHIFT");
                 let r = ui
@@ -327,6 +339,33 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                     btn.surrender_focus();
                     if btn.clicked() {
                         app.show_sidebar = !app.show_sidebar;
+                    }
+
+                    let arr_btn = ui
+                        .add(
+                            egui::Button::new(
+                                RichText::new("ARR").font(FontId::monospace(12.0)).color(
+                                    if app.show_arranger {
+                                        COLOR_TEXT
+                                    } else {
+                                        COLOR_TEXT_DIM
+                                    },
+                                ),
+                            )
+                            .fill(COLOR_LAYOUT_BG_PANEL)
+                            .stroke(Stroke::new(
+                                1.0,
+                                if app.show_arranger {
+                                    COLOR_TEXT
+                                } else {
+                                    COLOR_TEXT_DIM
+                                },
+                            )),
+                        )
+                        .on_hover_cursor(egui::CursorIcon::PointingHand);
+                    arr_btn.surrender_focus();
+                    if arr_btn.clicked() {
+                        app.show_arranger = !app.show_arranger;
                     }
 
                     let mixer_btn = ui

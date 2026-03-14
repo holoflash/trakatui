@@ -1,6 +1,6 @@
 use std::num::NonZero;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -67,6 +67,7 @@ pub enum Command {
         patterns: Vec<Arc<PatternSnapshot>>,
         order: Vec<usize>,
         settings: Arc<PlaybackSettings>,
+        stop_at_end: bool,
     },
     Stop,
     UpdateSettings {
@@ -522,6 +523,7 @@ pub struct TrackerSource {
     receiver: mpsc::Receiver<Command>,
     playback_row: Arc<AtomicUsize>,
     playback_order: Arc<AtomicUsize>,
+    playback_ended: Arc<AtomicBool>,
     master_volume: f32,
     stereo_phase: bool,
     right_sample: f32,
@@ -542,6 +544,7 @@ impl TrackerSource {
         receiver: mpsc::Receiver<Command>,
         playback_row: Arc<AtomicUsize>,
         playback_order: Arc<AtomicUsize>,
+        playback_ended: Arc<AtomicBool>,
         channel_scopes: Arc<Vec<ScopeBuffer>>,
     ) -> Self {
         Self {
@@ -560,6 +563,7 @@ impl TrackerSource {
             receiver,
             playback_row,
             playback_order,
+            playback_ended,
             master_volume: 1.0,
             stereo_phase: false,
             right_sample: 0.0,
@@ -580,7 +584,8 @@ impl TrackerSource {
                     patterns,
                     order,
                     settings,
-                } => self.start_playback(start_row, start_order, patterns, order, settings),
+                    stop_at_end,
+                } => self.start_playback(start_row, start_order, patterns, order, settings, stop_at_end),
                 Command::Stop => {
                     self.playing = false;
                     for track_voices in &mut self.channels {
@@ -690,6 +695,7 @@ impl TrackerSource {
         patterns: Vec<Arc<PatternSnapshot>>,
         order: Vec<usize>,
         settings: Arc<PlaybackSettings>,
+        stop_at_end: bool,
     ) {
         self.channels.clear();
         for track in &settings.tracks {
@@ -714,7 +720,7 @@ impl TrackerSource {
         self.current_order_idx = start_order;
         self.tick_sample_counter = 0.0;
         self.tick_in_row = 0;
-        self.stop_at_end = false;
+        self.stop_at_end = stop_at_end;
         self.muted_channels = settings.muted_channels.clone();
         self.patterns = patterns;
         self.order = order;
@@ -789,6 +795,7 @@ impl TrackerSource {
                     let next_order = self.current_order_idx + 1;
                     if next_order >= self.order.len() && self.stop_at_end {
                         self.playing = false;
+                        self.playback_ended.store(true, Ordering::Relaxed);
                         return;
                     }
                     self.current_order_idx = next_order % self.order.len();
@@ -841,7 +848,15 @@ impl Iterator for TrackerSource {
         }
 
         if self.stop_at_end && !self.playing {
-            return None;
+            self.command_check_counter += 1;
+            if self.command_check_counter >= 32 {
+                self.command_check_counter = 0;
+                self.process_commands();
+            }
+            if self.stereo_phase {
+                self.stereo_phase = false;
+            }
+            return Some(0.0);
         }
 
         self.command_check_counter += 1;
@@ -954,11 +969,13 @@ pub fn export_source(
         patterns: snapshots,
         order: order.to_vec(),
         settings,
+        stop_at_end: true,
     });
     drop(sender);
 
     let dummy_scopes: Arc<Vec<ScopeBuffer>> = Arc::new(Vec::new());
-    let mut source = TrackerSource::new(receiver, playback_row, playback_order, dummy_scopes);
+    let dummy_ended = Arc::new(AtomicBool::new(false));
+    let mut source = TrackerSource::new(receiver, playback_row, playback_order, dummy_ended, dummy_scopes);
     source.stop_at_end = true;
     source
 }
@@ -971,8 +988,9 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let row = Arc::new(AtomicUsize::new(0));
         let order = Arc::new(AtomicUsize::new(0));
+        let ended = Arc::new(AtomicBool::new(false));
         let scopes: Arc<Vec<ScopeBuffer>> = Arc::new(Vec::new());
-        let source = TrackerSource::new(rx, row.clone(), order, scopes);
+        let source = TrackerSource::new(rx, row.clone(), order, ended, scopes);
         (tx, source, row)
     }
 
@@ -989,6 +1007,7 @@ mod tests {
             patterns: vec![snapshot],
             order: vec![0],
             settings,
+            stop_at_end: false,
         }
     }
 
@@ -996,7 +1015,7 @@ mod tests {
     fn tick_timing_120bpm() {
         let (tx, mut source, row) = make_source();
 
-        let mut pattern = crate::project::Pattern::new(1, 4);
+        let mut pattern = crate::project::Pattern::new("test".into(), 1, 4);
         pattern.set(0, 0, 0, Cell::NoteOn(crate::project::Note::new(69)));
 
         tx.send(play_cmd(&pattern)).unwrap();
@@ -1013,7 +1032,7 @@ mod tests {
     fn stop_silences_output() {
         let (tx, mut source, _) = make_source();
 
-        let mut pattern = crate::project::Pattern::new(1, 4);
+        let mut pattern = crate::project::Pattern::new("test".into(), 1, 4);
         pattern.set(0, 0, 0, Cell::NoteOn(crate::project::Note::new(69)));
 
         tx.send(play_cmd(&pattern)).unwrap();

@@ -1,4 +1,68 @@
+use eframe::egui::Color32;
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PatternColor {
+    Coral,
+    Amber,
+    Lime,
+    Teal,
+    Sky,
+    Indigo,
+    Violet,
+    Rose,
+    Mint,
+    Slate,
+}
+
+impl PatternColor {
+    pub const ALL: &[Self] = &[
+        Self::Coral,
+        Self::Amber,
+        Self::Lime,
+        Self::Teal,
+        Self::Sky,
+        Self::Indigo,
+        Self::Violet,
+        Self::Rose,
+        Self::Mint,
+        Self::Slate,
+    ];
+
+    pub fn random() -> Self {
+        Self::ALL[fastrand::usize(..Self::ALL.len())]
+    }
+
+    pub fn to_color32(self) -> Color32 {
+        match self {
+            Self::Coral => Color32::from_rgb(235, 110, 95),
+            Self::Amber => Color32::from_rgb(230, 180, 70),
+            Self::Lime => Color32::from_rgb(140, 200, 80),
+            Self::Teal => Color32::from_rgb(70, 190, 175),
+            Self::Sky => Color32::from_rgb(90, 170, 230),
+            Self::Indigo => Color32::from_rgb(110, 120, 210),
+            Self::Violet => Color32::from_rgb(170, 110, 210),
+            Self::Rose => Color32::from_rgb(210, 110, 170),
+            Self::Mint => Color32::from_rgb(110, 210, 170),
+            Self::Slate => Color32::from_rgb(140, 150, 170),
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Coral => "Coral",
+            Self::Amber => "Amber",
+            Self::Lime => "Lime",
+            Self::Teal => "Teal",
+            Self::Sky => "Sky",
+            Self::Indigo => "Indigo",
+            Self::Violet => "Violet",
+            Self::Rose => "Rose",
+            Self::Mint => "Mint",
+            Self::Slate => "Slate",
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Note {
@@ -35,6 +99,9 @@ pub enum Cell {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Pattern {
+    pub name: String,
+    pub color: Option<PatternColor>,
+    pub repeat: u16,
     pub channels: usize,
     pub rows: usize,
     pub bpm: u16,
@@ -46,8 +113,11 @@ pub struct Pattern {
 }
 
 impl Pattern {
-    pub fn new(channels: usize, rows: usize) -> Self {
+    pub fn new(name: String, channels: usize, rows: usize) -> Self {
         Self {
+            name,
+            color: None,
+            repeat: 1,
             channels,
             rows,
             bpm: 120,
@@ -59,9 +129,12 @@ impl Pattern {
         }
     }
 
-    pub fn new_from(source: &Pattern, channels: usize) -> Self {
+    pub fn new_from(source: &Pattern, name: String, channels: usize) -> Self {
         let rows = source.computed_rows();
         Self {
+            name,
+            color: source.color,
+            repeat: source.repeat,
             channels,
             rows,
             bpm: source.bpm,
@@ -155,7 +228,7 @@ mod tests {
 
     #[test]
     fn pattern_basics() {
-        let mut pat = Pattern::new(4, 16);
+        let mut pat = Pattern::new("P01".into(), 4, 16);
         assert_eq!(pat.get(0, 0, 0), Cell::Empty);
         pat.set(0, 0, 0, Cell::NoteOn(Note::new(49)));
         assert_eq!(pat.get(0, 0, 0), Cell::NoteOn(Note::new(49)));
@@ -167,7 +240,7 @@ mod tests {
 
     #[test]
     fn polyphony() {
-        let mut pat = Pattern::new(2, 8);
+        let mut pat = Pattern::new("P01".into(), 2, 8);
         assert_eq!(pat.voice_count(0), 1);
         pat.set_voice_count(0, 3);
         assert_eq!(pat.voice_count(0), 3);
@@ -179,7 +252,10 @@ mod tests {
 
     #[test]
     fn default_pattern_settings() {
-        let pat = Pattern::new(1, 16);
+        let pat = Pattern::new("Test".into(), 1, 16);
+        assert_eq!(pat.name, "Test");
+        assert_eq!(pat.color, None);
+        assert_eq!(pat.repeat, 1);
         assert_eq!(pat.bpm, 120);
         assert_eq!(pat.time_sig_numerator, 4);
         assert_eq!(pat.time_sig_denominator, 4);
@@ -191,7 +267,7 @@ mod tests {
 
     #[test]
     fn computed_rows_various() {
-        let mut pat = Pattern::new(1, 16);
+        let mut pat = Pattern::new("P01".into(), 1, 16);
         pat.time_sig_numerator = 4;
         pat.note_value = 16;
         pat.measures = 2;
@@ -210,20 +286,26 @@ mod tests {
 
     #[test]
     fn new_from_inherits_settings() {
-        let mut source = Pattern::new(2, 16);
+        let mut source = Pattern::new("Source".into(), 2, 16);
         source.bpm = 140;
         source.time_sig_numerator = 7;
         source.time_sig_denominator = 8;
         source.note_value = 8;
         source.measures = 2;
+        source.repeat = 3;
+        source.color = Some(PatternColor::Coral);
 
-        let child = Pattern::new_from(&source, 3);
+        let child = Pattern::new_from(&source, "Child".into(), 3);
+        assert_eq!(child.name, "Child");
         assert_eq!(child.bpm, 140);
         assert_eq!(child.time_sig_numerator, 7);
         assert_eq!(child.time_sig_denominator, 8);
         assert_eq!(child.note_value, 8);
         assert_eq!(child.measures, 2);
+        assert_eq!(child.repeat, 3);
+        assert_eq!(child.color, Some(PatternColor::Coral));
         assert_eq!(child.channels, 3);
         assert_eq!(child.rows, source.computed_rows());
     }
 }
+

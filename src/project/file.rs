@@ -4,15 +4,8 @@ use std::path::Path;
 use super::Project;
 
 const MAGIC: &[u8; 4] = b"PSKT";
-const FORMAT_VERSION: u16 = 1;
+const FORMAT_VERSION: u16 = 2;
 
-/// Save a project to a `.psikat` file.
-///
-/// File layout:
-/// - 4 bytes magic `PSKT`
-/// - 2 bytes version (little-endian u16)
-/// - 2 bytes flags (reserved, currently 0)
-/// - remaining: MessagePack-encoded `Project`
 pub fn save(project: &Project, path: &Path) -> Result<(), String> {
     let mut buf: Vec<u8> = Vec::new();
 
@@ -65,13 +58,15 @@ mod tests {
     fn round_trip() {
         let project = Project::new();
         let dir = std::env::temp_dir();
-        let path = dir.join("test_round_trip.psikat");
+        let path = dir.join("test_round_trip_v2.psikat");
 
         save(&project, &path).expect("save failed");
         let loaded = load(&path).expect("load failed");
 
         assert_eq!(loaded.patterns[0].bpm, project.patterns[0].bpm);
-        assert_eq!(loaded.order, project.order);
+        assert_eq!(loaded.patterns[0].name, project.patterns[0].name);
+        assert_eq!(loaded.arranger.len(), project.arranger.len());
+        assert_eq!(loaded.flat_order(), project.flat_order());
         assert_eq!(loaded.patterns.len(), project.patterns.len());
         assert_eq!(loaded.tracks.len(), project.tracks.len());
         assert_eq!(loaded.patterns[0].rows, project.patterns[0].rows);

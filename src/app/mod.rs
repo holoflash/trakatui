@@ -45,6 +45,16 @@ pub enum WaveformDrag {
     RegionEnd,
 }
 
+pub enum DragTarget {
+    Item(usize),
+    SubPattern(usize, usize),
+}
+
+pub struct ArrangerDrag {
+    pub from: DragTarget,
+    pub current: DragTarget,
+}
+
 pub struct App {
     pub project: Project,
     pub cursor: Cursor,
@@ -69,6 +79,7 @@ pub struct App {
     pub follow_scroll_offset: f32,
     pub show_sidebar: bool,
     pub show_mixer: bool,
+    pub show_arranger: bool,
     pub text_editing: bool,
     pub channel_scopes: Arc<Vec<ScopeBuffer>>,
     pub display_scopes: Vec<[f32; SCOPE_SIZE]>,
@@ -88,6 +99,10 @@ pub struct App {
     pub poly_input: bool,
     pub chord_buffer: Vec<Note>,
     pub chord_frames_remaining: u8,
+
+    pub arranger_selection: Vec<usize>,
+    pub arranger_drag: Option<ArrangerDrag>,
+    pub arranger_renaming: Option<(usize, String)>,
 }
 
 impl App {
@@ -126,6 +141,7 @@ impl App {
             follow_scroll_offset: 0.0,
             show_sidebar: true,
             show_mixer: true,
+            show_arranger: true,
             text_editing: false,
             channel_scopes,
             display_scopes: vec![[0.0; SCOPE_SIZE]; 32],
@@ -145,6 +161,10 @@ impl App {
             poly_input: false,
             chord_buffer: Vec::new(),
             chord_frames_remaining: 0,
+
+            arranger_selection: Vec::new(),
+            arranger_drag: None,
+            arranger_renaming: None,
         }
     }
 
@@ -194,9 +214,10 @@ impl App {
             if path.extension().is_none() {
                 path.set_extension("wav");
             }
+            let flat_order = self.project.flat_order();
             let _ = crate::audio::export::export_wav(
                 &self.project.patterns,
-                &self.project.order,
+                &flat_order,
                 &path,
                 &self.project.tracks,
                 self.project.master_volume_linear(),
@@ -326,6 +347,9 @@ impl App {
         self.cursor.row = 0;
         self.current_track = 0;
         self.envelope_point_idx = 0;
+        self.arranger_selection.clear();
+        self.arranger_drag = None;
+        self.arranger_renaming = None;
     }
 
     pub fn project_name(&self) -> String {
