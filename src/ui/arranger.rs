@@ -1,5 +1,5 @@
 use eframe::egui::scroll_area::ScrollBarVisibility;
-use eframe::egui::{self, RichText, Sense, Stroke};
+use eframe::egui::{self, RichText, Sense, Stroke, UiBuilder};
 
 use crate::app::App;
 use crate::project::{ArrangerItem, PatternColor};
@@ -382,23 +382,36 @@ fn draw_rename_field(
     buf: &mut String,
 ) -> bool {
     let field_rect = egui::Rect::from_min_max(
-        egui::pos2(text_left, rect.min.y + 2.0),
-        egui::pos2(rect.max.x - 4.0, rect.max.y - 2.0),
+        egui::pos2(text_left, rect.min.y),
+        egui::pos2(rect.max.x - 4.0, rect.max.y),
     );
 
+    let mut child = ui.new_child(
+        UiBuilder::new()
+            .max_rect(field_rect)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
     let te = egui::TextEdit::singleline(buf)
         .font(FONT)
         .text_color(COLOR_TEXT_ACTIVE)
-        .desired_width(field_rect.width() - 8.0)
-        .margin(egui::Margin::symmetric(4, 0));
+        .desired_width(24.0 * 7.3)
+        .margin(egui::Margin::ZERO)
+        .frame(false)
+        .char_limit(24);
 
-    let resp = ui.put(field_rect, te);
+    let resp = child.add(te);
     resp.request_focus();
 
     let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
     let escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
+    let clicked_outside = ui.input(|i| {
+        i.pointer.any_pressed()
+            && i.pointer
+                .interact_pos()
+                .is_some_and(|p| !field_rect.contains(p))
+    });
 
-    enter || escape
+    enter || escape || clicked_outside
 }
 
 fn item_bg(is_current: bool, is_selected: bool, is_drag_target: bool) -> egui::Color32 {
@@ -603,15 +616,13 @@ fn sub_pattern_context_menu(
     if let ArrangerItem::Group {
         pattern_indices, ..
     } = &app.project.arranger[group_idx]
+        && pattern_indices.len() > 1
+        && ui
+            .button(RichText::new("Delete").font(FONT).color(COLOR_TEXT_ACTIVE))
+            .clicked()
     {
-        if pattern_indices.len() > 1
-            && ui
-                .button(RichText::new("Delete").font(FONT).color(COLOR_TEXT_ACTIVE))
-                .clicked()
-        {
-            actions.push(ArrangerAction::SubDelete(group_idx, sub_idx));
-            ui.close();
-        }
+        actions.push(ArrangerAction::SubDelete(group_idx, sub_idx));
+        ui.close();
     }
 }
 
@@ -728,7 +739,8 @@ fn process_actions(app: &mut App, actions: Vec<ArrangerAction>) {
             }
             ArrangerAction::CommitRename => {
                 if let Some((idx, name)) = app.arranger_renaming.take() {
-                    let final_name = if name.trim().is_empty() {
+                    let trimmed = name.trim().to_string();
+                    let final_name = if trimmed.is_empty() {
                         match &app.project.arranger[idx] {
                             ArrangerItem::Single { pattern_idx } => {
                                 app.project.patterns[*pattern_idx].name.clone()
@@ -736,7 +748,7 @@ fn process_actions(app: &mut App, actions: Vec<ArrangerAction>) {
                             ArrangerItem::Group { name: old_name, .. } => old_name.clone(),
                         }
                     } else {
-                        name
+                        trimmed
                     };
                     match &app.project.arranger[idx] {
                         ArrangerItem::Single { pattern_idx } => {
@@ -930,10 +942,9 @@ fn process_actions(app: &mut App, actions: Vec<ArrangerAction>) {
                 if let ArrangerItem::Group {
                     pattern_indices, ..
                 } = &mut app.project.arranger[group_idx]
+                    && pattern_indices.len() > 1
                 {
-                    if pattern_indices.len() > 1 {
-                        pattern_indices.remove(sub_idx);
-                    }
+                    pattern_indices.remove(sub_idx);
                 }
             }
             ArrangerAction::RemoveFromGroup(group_idx, sub_idx) => {

@@ -443,14 +443,13 @@ impl Project {
             group_idx
         };
 
-        if actual_group < self.arranger.len() {
-            if let ArrangerItem::Group {
+        if actual_group < self.arranger.len()
+            && let ArrangerItem::Group {
                 pattern_indices, ..
             } = &mut self.arranger[actual_group]
-            {
-                let pos = sub_pos.min(pattern_indices.len());
-                pattern_indices.insert(pos, pattern_idx);
-            }
+        {
+            let pos = sub_pos.min(pattern_indices.len());
+            pattern_indices.insert(pos, pattern_idx);
         }
 
         self.current_item_idx = actual_group.min(self.arranger.len().saturating_sub(1));
@@ -553,14 +552,13 @@ impl Project {
             to_group
         };
 
-        if actual_to < self.arranger.len() {
-            if let ArrangerItem::Group {
+        if actual_to < self.arranger.len()
+            && let ArrangerItem::Group {
                 pattern_indices, ..
             } = &mut self.arranger[actual_to]
-            {
-                let pos = to_sub.min(pattern_indices.len());
-                pattern_indices.insert(pos, pat_idx);
-            }
+        {
+            let pos = to_sub.min(pattern_indices.len());
+            pattern_indices.insert(pos, pat_idx);
         }
 
         self.current_item_idx = actual_to.min(self.arranger.len().saturating_sub(1));
