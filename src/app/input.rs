@@ -9,10 +9,47 @@ use super::{App, ClipboardData, Mode, MovePreview};
 
 impl App {
     pub fn handle_input(&mut self, ctx: &egui::Context) -> bool {
-        if self.text_editing || ctx.wants_keyboard_input() {
+        self.clamp_cursor();
+
+        let wants_kb = ctx.wants_keyboard_input();
+
+        let clipboard_handled = ctx.input(|input| {
+            if self.text_editing || wants_kb {
+                return false;
+            }
+            let has_copy = input.events.iter().any(|e| matches!(e, egui::Event::Copy));
+            let has_cut = input.events.iter().any(|e| matches!(e, egui::Event::Cut));
+            let has_paste = input
+                .events
+                .iter()
+                .any(|e| matches!(e, egui::Event::Paste(_)));
+
+            if has_cut {
+                self.save_undo_snapshot();
+                self.handle_copy();
+                self.handle_delete();
+                return true;
+            }
+            if has_copy {
+                self.handle_copy();
+                return true;
+            }
+            if has_paste {
+                self.save_undo_snapshot();
+                self.handle_paste();
+                return true;
+            }
+            false
+        });
+
+        if clipboard_handled {
             return false;
         }
-        self.clamp_cursor();
+
+        if self.text_editing || wants_kb {
+            return false;
+        }
+
         ctx.input(|input| {
             let cmd = input.modifiers.command;
             let shift = input.modifiers.shift;
@@ -107,30 +144,6 @@ impl App {
             return false;
         }
 
-        {
-            let has_copy = input.events.iter().any(|e| matches!(e, egui::Event::Copy));
-            let has_cut = input.events.iter().any(|e| matches!(e, egui::Event::Cut));
-            let has_paste = input
-                .events
-                .iter()
-                .any(|e| matches!(e, egui::Event::Paste(_)));
-
-            if has_cut {
-                self.save_undo_snapshot();
-                self.handle_copy();
-                self.handle_delete();
-                return false;
-            }
-            if has_copy {
-                self.handle_copy();
-                return false;
-            }
-            if has_paste {
-                self.save_undo_snapshot();
-                self.handle_paste();
-                return false;
-            }
-        }
 
         if actions.contains(&Action::NoteOff) {
             self.save_undo_snapshot();
