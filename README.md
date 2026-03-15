@@ -1,12 +1,12 @@
-# PSIKAT
+# psikat
 
-![psikat](assets/psikat_full.png)
+<img src="assets/icon.png" alt="psikat" height="128" width="128" style="image-rendering: pixelated;"/>
 
 A lightweight cross-platform tracker-like sequencer built with Rust and egui.
 
 ![screenshot](screenshot.png)
 
-## 🚧 UNDER DEVELOPMENT
+## 🚧 UNDER DEVELOPMENT 🚧
 
 Each time I sit down to work on piskat, I find new things I want to fix, add or change.
 Hang tight...this is gonna take a while!
