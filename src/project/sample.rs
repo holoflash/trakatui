@@ -27,10 +27,9 @@ pub struct SampleData {
     pub loop_type: LoopType,
     pub loop_start: usize,
     pub loop_length: usize,
-    #[serde(default)]
     pub region_start: usize,
-    #[serde(default)]
     pub region_end: usize,
+    pub reverse: bool,
 }
 impl SampleData {
     #[inline]
@@ -87,6 +86,7 @@ impl SampleData {
             loop_length: 0,
             region_start: 0,
             region_end: total_len,
+            reverse: false,
         }))
     }
 
@@ -111,6 +111,7 @@ impl SampleData {
             loop_length: if looped { len } else { 0 },
             region_start: 0,
             region_end: len,
+            reverse: false,
         })
     }
 
@@ -194,6 +195,7 @@ mod tests {
             loop_length: 0,
             region_start: 0,
             region_end: 44100,
+            reverse: false,
         };
         assert_eq!(data.samples_i16.len(), 44100);
         assert_eq!(data.samples_f32.len(), 44100);

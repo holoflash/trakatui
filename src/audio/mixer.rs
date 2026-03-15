@@ -277,9 +277,13 @@ impl Channel {
         } else {
             sample_data.region_end
         };
-        self.sample_position = self.region_start as f64;
+        self.sample_position = if sample_data.reverse {
+            (self.region_end as f64 - 1.0).max(self.region_start as f64)
+        } else {
+            self.region_start as f64
+        };
 
-        self.sample_direction = 1.0;
+        self.sample_direction = if sample_data.reverse { -1.0 } else { 1.0 };
         self.env_tick = 0;
         self.cached_env_amp = self.vol_envelope.amplitude_at_tick(0);
         self.note_released = false;
@@ -411,31 +415,42 @@ impl Channel {
         self.sample_position += self.sample_step * self.sample_direction;
 
         let data = &self.sample_data;
+        let region_start = self.region_start as f64;
+        let region_end = self.region_end as f64;
+
         if data.loop_length > 0 {
-            let loop_end = data.loop_end() as f64;
-            let loop_start = data.loop_start as f64;
-            match data.loop_type {
-                LoopType::Forward => {
-                    if self.sample_position >= loop_end {
-                        self.sample_position -= data.loop_length as f64;
+            let loop_start = (data.loop_start as f64).max(region_start);
+            let loop_end = (data.loop_end() as f64).min(region_end);
+            let loop_len = loop_end - loop_start;
+
+            if loop_len > 0.0 {
+                match data.loop_type {
+                    LoopType::Forward => {
+                        if self.sample_direction > 0.0 && self.sample_position >= loop_end {
+                            self.sample_position -= loop_len;
+                        } else if self.sample_direction < 0.0 && self.sample_position < loop_start {
+                            self.sample_position += loop_len;
+                        }
+                    }
+                    LoopType::PingPong => {
+                        if self.sample_direction > 0.0 && self.sample_position >= loop_end {
+                            self.sample_position = loop_end - (self.sample_position - loop_end);
+                            self.sample_direction = -1.0;
+                        } else if self.sample_direction < 0.0 && self.sample_position < loop_start {
+                            self.sample_position = loop_start + (loop_start - self.sample_position);
+                            self.sample_direction = 1.0;
+                        }
+                    }
+                    LoopType::None => {
+                        if self.sample_position >= region_end || self.sample_position < region_start {
+                            return false;
+                        }
                     }
                 }
-                LoopType::PingPong => {
-                    if self.sample_direction > 0.0 && self.sample_position >= loop_end {
-                        self.sample_position = loop_end - (self.sample_position - loop_end);
-                        self.sample_direction = -1.0;
-                    } else if self.sample_direction < 0.0 && self.sample_position < loop_start {
-                        self.sample_position = loop_start + (loop_start - self.sample_position);
-                        self.sample_direction = 1.0;
-                    }
-                }
-                LoopType::None => {
-                    if self.sample_position >= self.region_end as f64 {
-                        return false;
-                    }
-                }
+            } else if self.sample_position >= region_end || self.sample_position < region_start {
+                return false;
             }
-        } else if self.sample_position >= self.region_end as f64 {
+        } else if self.sample_position >= region_end || self.sample_position < region_start {
             return false;
         }
 

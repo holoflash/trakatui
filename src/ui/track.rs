@@ -70,7 +70,7 @@ pub fn draw_track_sidebar(ctx: &egui::Context, app: &mut App) {
     }
     egui::SidePanel::right("sidebar")
         .resizable(false)
-        .exact_width(280.0)
+        .exact_width(286.0)
         .frame(
             egui::Frame::new()
                 .fill(COLOR_LAYOUT_BG_DARK)
@@ -266,6 +266,37 @@ fn draw_basic_fields(ui: &mut egui::Ui, app: &mut App, inst_idx: usize) {
 
 fn draw_loop_controls(ui: &mut egui::Ui, app: &mut App, inst_idx: usize) {
     ui.horizontal(|ui| {
+        field_label(ui, "PLAYBACK");
+        let sd = &app.project.tracks[inst_idx].sample_data;
+        let current_reverse = sd.reverse;
+        let mut selected_idx = if current_reverse { 1usize } else { 0 };
+        let labels = ["Forward", "Reverse"];
+        egui::ComboBox::from_id_salt("playback_dir_combo")
+            .selected_text(RichText::new(labels[selected_idx]).font(FontId::monospace(12.0)))
+            .width(100.0)
+            .show_ui(ui, |ui| {
+                let cur = selected_idx;
+                for (i, label) in labels.iter().enumerate() {
+                    ui.selectable_value(
+                        &mut selected_idx,
+                        i,
+                        RichText::new(*label).color(if i == cur {
+                            COLOR_ACCENT
+                        } else {
+                            COLOR_TEXT
+                        }),
+                    );
+                }
+            });
+        let new_reverse = selected_idx == 1;
+        if new_reverse != current_reverse {
+            let sd = Arc::make_mut(&mut app.project.tracks[inst_idx].sample_data);
+            sd.reverse = new_reverse;
+        }
+    });
+    ui.add_space(2.0);
+
+    ui.horizontal(|ui| {
         field_label(ui, "LOOP");
         let sd = &app.project.tracks[inst_idx].sample_data;
         let current_type = sd.loop_type;
@@ -274,7 +305,7 @@ fn draw_loop_controls(ui: &mut egui::Ui, app: &mut App, inst_idx: usize) {
             LoopType::Forward => 1,
             LoopType::PingPong => 2,
         };
-        let labels = ["Off", "Forward", "Ping-Pong"];
+        let labels = ["No Loop", "Forward", "Ping-Pong"];
         egui::ComboBox::from_id_salt("loop_type_combo")
             .selected_text(RichText::new(labels[selected_idx]).font(FontId::monospace(12.0)))
             .width(100.0)
@@ -347,10 +378,12 @@ fn draw_interactive_waveform(ui: &mut egui::Ui, app: &mut App, inst_idx: usize) 
 
     let num_points = width as usize;
     let samples_per_point = total_len / num_points.max(1);
+    let is_reversed = sd.reverse;
     if samples_per_point > 0 {
         let waveform_color = egui::Color32::from_rgba_premultiplied(160, 145, 100, 100);
         for i in 0..num_points {
-            let start = i * samples_per_point;
+            let src_i = if is_reversed { num_points - 1 - i } else { i };
+            let start = src_i * samples_per_point;
             let end = (start + samples_per_point).min(total_len);
             let mut peak_pos: i32 = 0;
             let mut peak_neg: i32 = 0;
@@ -502,6 +535,34 @@ fn draw_interactive_waveform(ui: &mut egui::Ui, app: &mut App, inst_idx: usize) 
     if response.double_clicked() {
         load_sample_dialog(app, inst_idx);
     }
+
+    response.context_menu(|ui| {
+        let sd = &app.project.tracks[inst_idx].sample_data;
+        let total = sd.samples_i16.len();
+        let rs = sd.region_start;
+        let re = if sd.region_end == 0 { total } else { sd.region_end };
+        let has_selection = rs > 0 || re < total;
+        if ui
+            .add_enabled(has_selection, egui::Button::new("Trim to selection"))
+            .clicked()
+        {
+            let sd = Arc::make_mut(&mut app.project.tracks[inst_idx].sample_data);
+            let re_clamped = re.min(sd.samples_i16.len());
+            let rs_clamped = rs.min(re_clamped);
+            sd.samples_i16 = sd.samples_i16[rs_clamped..re_clamped].to_vec();
+            sd.samples_f32 = sd.samples_f32[rs_clamped..re_clamped].to_vec();
+            let new_len = sd.samples_i16.len();
+            if sd.loop_start >= rs_clamped {
+                sd.loop_start -= rs_clamped;
+            } else {
+                sd.loop_start = 0;
+            }
+            sd.loop_length = sd.loop_length.min(new_len.saturating_sub(sd.loop_start));
+            sd.region_start = 0;
+            sd.region_end = new_len;
+            ui.close();
+        }
+    });
 
     if !near_drag_handle {
         response.on_hover_ui(|ui| {

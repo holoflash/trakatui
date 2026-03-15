@@ -186,29 +186,16 @@ pub struct Track {
     pub note_to_sample: Vec<u8>,
     pub vol_fadeout: u16,
     pub default_panning: f32,
-    #[serde(default)]
     pub coarse_tune: i8,
-    #[serde(default)]
     pub fine_tune: i8,
-    #[serde(default)]
     pub pitch_env_enabled: bool,
-    #[serde(default = "default_pitch_env_depth")]
     pub pitch_env_depth: f32,
-    #[serde(default = "VolEnvelope::disabled")]
     pub pitch_envelope: VolEnvelope,
-    #[serde(default)]
     pub filter: FilterSettings,
-    #[serde(default = "default_polyphony")]
     pub polyphony: u8,
 }
 
-fn default_pitch_env_depth() -> f32 {
-    12.0
-}
 
-fn default_polyphony() -> u8 {
-    1
-}
 
 impl Track {
     pub fn sample_for_note(&self, pitch: u8) -> (&Arc<SampleData>, f32) {
