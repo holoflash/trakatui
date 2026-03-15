@@ -212,25 +212,10 @@ impl Pattern {
         self.data.get(ch).and_then(|voices| voices.first()).map(|v| v.len()).unwrap_or(self.rows)
     }
 
-    pub fn primary_row_group(&self) -> usize {
-        let rpm = self.rows_per_measure();
-        let num = self.time_sig_numerator as usize;
-        rpm / gcd(rpm, num)
-    }
-
     pub fn primary_row_group_for_track(&self, ch: usize) -> usize {
         let rpm = self.rows_per_measure_for_track(ch);
         let num = self.time_sig_numerator as usize;
         rpm / gcd(rpm, num)
-    }
-
-    pub fn secondary_row_group(&self) -> usize {
-        let primary = self.primary_row_group();
-        if primary <= 1 {
-            return 0;
-        }
-        let spf = smallest_prime_factor(primary);
-        if spf < primary { primary / spf } else { 0 }
     }
 
     pub fn secondary_row_group_for_track(&self, ch: usize) -> usize {
@@ -378,7 +363,7 @@ mod tests {
         assert_eq!(pat.note_value, 16);
         assert_eq!(pat.measures, 1);
         assert_eq!(pat.computed_rows(), 16);
-        assert_eq!(pat.primary_row_group(), 4);
+        assert_eq!(pat.primary_row_group_for_track(0), 4);
     }
 
     #[test]
@@ -410,7 +395,7 @@ mod tests {
         pat.track_note_values[0] = 24;
         pat.measures = 1;
         assert_eq!(pat.computed_rows(), 24);
-        assert_eq!(pat.primary_row_group(), 6);
+        assert_eq!(pat.primary_row_group_for_track(0), 6);
     }
 
     #[test]

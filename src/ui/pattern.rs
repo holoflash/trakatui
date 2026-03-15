@@ -50,8 +50,7 @@ pub fn draw_pattern(ctx: &egui::Context, app: &mut App) {
                     let visible_height = ui.available_height();
 
                     if app.playback.playing {
-                        let target_y = (app.playback_row_display as f32 * ROW_HEIGHT
-                            + ROW_HEIGHT
+                        let target_y = (app.playback_row_display as f32 * ROW_HEIGHT + ROW_HEIGHT
                             - visible_height / 2.0
                             + ROW_HEIGHT / 2.0)
                             .max(0.0);
@@ -74,14 +73,24 @@ pub fn draw_pattern(ctx: &egui::Context, app: &mut App) {
 
                     let body_origin = origin + egui::vec2(0.0, ROW_HEIGHT);
 
+                    let cur_ch = app.cursor.channel;
+                    let pat = app.project.current_pattern();
+                    let cur_track_rows = pat.track_rows(cur_ch);
+                    let cur_primary = pat.primary_row_group_for_track(cur_ch);
+                    let cur_secondary = pat.secondary_row_group_for_track(cur_ch);
+                    let playback_row = if app.playback.playing {
+                        Some(app.playback_row_display)
+                    } else {
+                        None
+                    };
                     draw_row_numbers(
                         &painter,
                         body_origin,
                         max_rows,
-                        app.playback.playing,
-                        app.playback_row_display,
-                        app.project.current_pattern().primary_row_group(),
-                        app.project.current_pattern().secondary_row_group(),
+                        cur_track_rows,
+                        playback_row,
+                        cur_primary,
+                        cur_secondary,
                     );
 
                     let sel_bounds = app.selection_bounds();
@@ -96,8 +105,14 @@ pub fn draw_pattern(ctx: &egui::Context, app: &mut App) {
                             ROW_HEIGHT
                         };
 
-                        let ch_primary = app.project.current_pattern().primary_row_group_for_track(ch);
-                        let ch_secondary = app.project.current_pattern().secondary_row_group_for_track(ch);
+                        let ch_primary = app
+                            .project
+                            .current_pattern()
+                            .primary_row_group_for_track(ch);
+                        let ch_secondary = app
+                            .project
+                            .current_pattern()
+                            .secondary_row_group_for_track(ch);
 
                         for v in 0..voices {
                             let is_first_voice = v == 0;
@@ -106,7 +121,8 @@ pub fn draw_pattern(ctx: &egui::Context, app: &mut App) {
                             if is_first_voice {
                                 let top = body_origin + egui::vec2(vx, 0.0);
                                 let bottom = top + egui::vec2(0.0, max_rows as f32 * ROW_HEIGHT);
-                                painter.line_segment([top, bottom], Stroke::new(1.0, COLOR_TEXT_DIM));
+                                painter
+                                    .line_segment([top, bottom], Stroke::new(1.0, COLOR_TEXT_DIM));
                             }
 
                             for t in 0..track_rows {
@@ -124,7 +140,9 @@ pub fn draw_pattern(ctx: &egui::Context, app: &mut App) {
                                 };
 
                                 let ch_is_beat = ch_primary > 0 && t.is_multiple_of(ch_primary);
-                                let ch_is_subdivision = ch_secondary > 0 && !ch_is_beat && t.is_multiple_of(ch_secondary);
+                                let ch_is_subdivision = ch_secondary > 0
+                                    && !ch_is_beat
+                                    && t.is_multiple_of(ch_secondary);
 
                                 let row_bg = if is_playback_cell {
                                     COLOR_PATTERN_PLAYBACK_HIGHLIGHT
@@ -145,7 +163,8 @@ pub fn draw_pattern(ctx: &egui::Context, app: &mut App) {
 
                                 let is_selected = sel_bounds.is_some_and(
                                     |(min_ch, max_ch, min_v, max_v, min_row, max_row)| {
-                                        if t < min_row || t > max_row || ch < min_ch || ch > max_ch {
+                                        if t < min_row || t > max_row || ch < min_ch || ch > max_ch
+                                        {
                                             return false;
                                         }
                                         if min_ch == max_ch {
@@ -161,7 +180,8 @@ pub fn draw_pattern(ctx: &egui::Context, app: &mut App) {
                                 );
 
                                 let pat = app.project.current_pattern();
-                                let mut cell = if v < pat.voice_count(ch) && t < pat.track_rows(ch) {
+                                let mut cell = if v < pat.voice_count(ch) && t < pat.track_rows(ch)
+                                {
                                     pat.get(ch, v, t)
                                 } else {
                                     Cell::Empty
@@ -307,19 +327,30 @@ fn draw_row_numbers(
     painter: &egui::Painter,
     body_origin: egui::Pos2,
     max_rows: usize,
-    playing: bool,
-    playback_row: usize,
+    track_rows: usize,
+    playback_row: Option<usize>,
     primary: usize,
     secondary: usize,
 ) {
-    for r in 0..max_rows {
-        let y = body_origin.y + r as f32 * ROW_HEIGHT;
+    let cell_h = if track_rows > 0 {
+        (max_rows as f32 * ROW_HEIGHT) / track_rows as f32
+    } else {
+        ROW_HEIGHT
+    };
+
+    for r in 0..track_rows {
+        let y = body_origin.y + r as f32 * cell_h;
         let rect = egui::Rect::from_min_size(
             egui::pos2(body_origin.x, y),
-            egui::vec2(ROW_NUM_WIDTH, ROW_HEIGHT),
+            egui::vec2(ROW_NUM_WIDTH, cell_h),
         );
 
-        let is_playback = playing && r == playback_row;
+        let is_playback = playback_row.is_some_and(|pb| {
+            let row_top = r as f32 / track_rows as f32;
+            let row_bot = (r + 1) as f32 / track_rows as f32;
+            let pb_frac = pb as f32 / max_rows as f32;
+            pb_frac >= row_top && pb_frac < row_bot
+        });
         let is_beat = primary > 0 && r.is_multiple_of(primary);
         let is_sub = secondary > 0 && !is_beat && r.is_multiple_of(secondary);
 
@@ -333,7 +364,11 @@ fn draw_row_numbers(
             egui::Color32::TRANSPARENT
         };
         if bg != egui::Color32::TRANSPARENT {
-            painter.rect_filled(rect, 0.0, bg);
+            let fill_rect = egui::Rect::from_min_size(
+                rect.left_top(),
+                egui::vec2(ROW_NUM_WIDTH, ROW_HEIGHT.min(cell_h)),
+            );
+            painter.rect_filled(fill_rect, 0.0, bg);
         }
 
         let text_color = if is_playback {
@@ -342,8 +377,8 @@ fn draw_row_numbers(
             COLOR_TEXT_DIM
         };
         painter.text(
-            rect.left_center() + egui::vec2(CELL_PAD, 0.0),
-            egui::Align2::LEFT_CENTER,
+            rect.left_top() + egui::vec2(CELL_PAD, 2.0),
+            egui::Align2::LEFT_TOP,
             format!("{:02}", r + 1),
             FONT,
             text_color,

@@ -278,10 +278,15 @@ impl App {
                 let mut cells = Vec::new();
                 for flat in min_flat as usize..=max_flat as usize {
                     let (ch, v) = self.resolve_flat_col(flat).unwrap();
+                    let ch_rows = self.project.current_pattern().track_rows(ch);
                     for row in min_row..=max_row {
-                        let cell = self.project.current_pattern().get(ch, v, row);
-                        cells.push((flat - min_flat as usize, row - min_row, cell));
-                        self.project.current_pattern_mut().clear(ch, v, row);
+                        if row >= ch_rows {
+                            cells.push((flat - min_flat as usize, row - min_row, Cell::Empty));
+                        } else {
+                            let cell = self.project.current_pattern().get(ch, v, row);
+                            cells.push((flat - min_flat as usize, row - min_row, cell));
+                            self.project.current_pattern_mut().clear(ch, v, row);
+                        }
                     }
                 }
 
@@ -336,13 +341,12 @@ impl App {
         };
         let (min_ch, _, min_v, _, min_row, _) = self.selection_bounds().unwrap();
         let base_flat = self.flat_col(min_ch, min_v);
-        let total_cols = self.total_columns();
-        let total_rows = self.project.current_pattern().rows;
         for (col_off, row_off, cell) in &preview.cells {
             let flat = base_flat + col_off;
             let row = min_row + row_off;
-            if flat < total_cols && row < total_rows {
-                let (ch, v) = self.resolve_flat_col(flat).unwrap();
+            if let Some((ch, v)) = self.resolve_flat_col(flat)
+                && row < self.project.current_pattern().track_rows(ch)
+            {
                 self.project.current_pattern_mut().set(ch, v, row, *cell);
             }
         }
@@ -357,14 +361,13 @@ impl App {
         let (orig_ch, orig_voice, orig_row) = preview.origin_cursor;
         let orig_min_flat = self.flat_col(orig_ach.min(orig_ch), if orig_ach <= orig_ch { orig_av } else { orig_voice });
         let base_row = orig_arow.min(orig_row);
-        let total_cols = self.total_columns();
-        let total_rows = self.project.current_pattern().rows;
 
         for (col_off, row_off, cell) in &preview.cells {
             let flat = orig_min_flat + col_off;
             let row = base_row + row_off;
-            if flat < total_cols && row < total_rows {
-                let (ch, v) = self.resolve_flat_col(flat).unwrap();
+            if let Some((ch, v)) = self.resolve_flat_col(flat)
+                && row < self.project.current_pattern().track_rows(ch)
+            {
                 self.project.current_pattern_mut().set(ch, v, row, *cell);
             }
         }
