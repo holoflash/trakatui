@@ -135,7 +135,7 @@ struct TrackTiming {
     sample_counter: f64,
 }
 
-const RELEASE_FADE_MIN_SAMPLES: u32 = 220;
+const RELEASE_FADE_SAMPLES: u32 = 64;
 const SAMPLE_RATE_F64: f64 = SAMPLE_RATE as f64;
 
 struct Channel {
@@ -170,6 +170,8 @@ struct Channel {
     cached_filter_env: f32,
     filter_state_1: f32,
     filter_state_2: f32,
+    filter_state_1_r: f32,
+    filter_state_2_r: f32,
     filter_b0: f32,
     filter_b1: f32,
     filter_b2: f32,
@@ -178,6 +180,12 @@ struct Channel {
 
     region_start: usize,
     region_end: usize,
+
+    xfade_remaining: u32,
+    xfade_prev_l: f32,
+    xfade_prev_r: f32,
+
+    release_fade_remaining: u32,
 }
 
 impl Channel {
@@ -213,6 +221,8 @@ impl Channel {
             cached_filter_env: 1.0,
             filter_state_1: 0.0,
             filter_state_2: 0.0,
+            filter_state_1_r: 0.0,
+            filter_state_2_r: 0.0,
             filter_b0: 1.0,
             filter_b1: 0.0,
             filter_b2: 0.0,
@@ -221,6 +231,12 @@ impl Channel {
 
             region_start: 0,
             region_end: 0,
+
+            xfade_remaining: 0,
+            xfade_prev_l: 0.0,
+            xfade_prev_r: 0.0,
+
+            release_fade_remaining: 0,
         }
     }
 
@@ -257,6 +273,16 @@ impl Channel {
         pitch_envelope: AdsrEnvelope,
         filter: FilterSettings,
     ) {
+        if self.active {
+            let mut gain = self.cached_env_amp * self.volume;
+            if self.release_fade_remaining > 0 {
+                gain *= self.release_fade_remaining as f32 / RELEASE_FADE_SAMPLES as f32;
+            }
+            let (sl, sr) = self.read_interpolated_sample_stereo();
+            self.xfade_prev_l = sl * gain;
+            self.xfade_prev_r = sr * gain;
+            self.xfade_remaining = 64;
+        }
         self.active = true;
         self.volume = volume;
         self.vol_envelope = vol_envelope;
@@ -285,6 +311,7 @@ impl Channel {
         self.release_elapsed = None;
         self.cached_env_amp = self.vol_envelope.amplitude(0.0, None, SAMPLE_RATE_F64);
         self.note_released = false;
+        self.release_fade_remaining = 0;
 
         self.pitch_env_enabled = pitch_env_enabled;
         self.pitch_env_depth = pitch_env_depth;
@@ -307,6 +334,8 @@ impl Channel {
         };
         self.filter_state_1 = 0.0;
         self.filter_state_2 = 0.0;
+        self.filter_state_1_r = 0.0;
+        self.filter_state_2_r = 0.0;
         if self.filter.enabled {
             self.update_filter_coeffs();
         }
@@ -317,6 +346,9 @@ impl Channel {
         self.release_elapsed = Some(0.0);
         self.pitch_release_elapsed = Some(0.0);
         self.filter_release_elapsed = Some(0.0);
+        if !self.vol_envelope.enabled && self.release_fade_remaining == 0 {
+            self.release_fade_remaining = RELEASE_FADE_SAMPLES;
+        }
     }
 
     fn update_filter_coeffs(&mut self) {
@@ -374,34 +406,42 @@ impl Channel {
     }
 
     #[inline]
-    fn apply_filter(&mut self, input: f32) -> f32 {
-        let output = self.filter_b0 * input + self.filter_state_1;
-        self.filter_state_1 = self.filter_b1 * input - self.filter_a1 * output + self.filter_state_2;
-        self.filter_state_2 = self.filter_b2 * input - self.filter_a2 * output;
-        output
+    fn apply_filter_stereo(&mut self, left: f32, right: f32) -> (f32, f32) {
+        let out_l = self.filter_b0 * left + self.filter_state_1;
+        self.filter_state_1 = self.filter_b1 * left - self.filter_a1 * out_l + self.filter_state_2;
+        self.filter_state_2 = self.filter_b2 * left - self.filter_a2 * out_l;
+        let out_r = self.filter_b0 * right + self.filter_state_1_r;
+        self.filter_state_1_r = self.filter_b1 * right - self.filter_a1 * out_r + self.filter_state_2_r;
+        self.filter_state_2_r = self.filter_b2 * right - self.filter_a2 * out_r;
+        (out_l, out_r)
     }
 
     #[inline]
-    fn read_interpolated_sample(&self) -> f32 {
-        let samples = &self.sample_data.samples_f32;
-        let len = samples.len();
+    fn read_interpolated_sample_stereo(&self) -> (f32, f32) {
+        let left_buf = &self.sample_data.samples_f32;
+        let right_buf = &self.sample_data.samples_f32_right;
+        let len = left_buf.len();
 
         if len == 0 {
-            return 0.0;
+            return (0.0, 0.0);
         }
 
         let sample_index = self.sample_position as usize;
         if sample_index >= len {
-            return 0.0;
+            return (0.0, 0.0);
         }
 
-        let fractional_position = (self.sample_position - sample_index as f64) as f32;
-        let prev = if sample_index > 0 { samples[sample_index - 1] } else { samples[sample_index] };
-        let current = samples[sample_index];
-        let next = if sample_index + 1 < len { samples[sample_index + 1] } else { current };
-        let next2 = if sample_index + 2 < len { samples[sample_index + 2] } else { next };
+        let frac = (self.sample_position - sample_index as f64) as f32;
 
-        hermite_interpolate(prev, current, next, next2, fractional_position)
+        let interp = |buf: &[f32]| -> f32 {
+            let prev = if sample_index > 0 { buf[sample_index - 1] } else { buf[sample_index] };
+            let current = buf[sample_index];
+            let next = if sample_index + 1 < len { buf[sample_index + 1] } else { current };
+            let next2 = if sample_index + 2 < len { buf[sample_index + 2] } else { next };
+            hermite_interpolate(prev, current, next, next2, frac)
+        };
+
+        (interp(left_buf), interp(right_buf))
     }
 
     #[inline]
@@ -458,30 +498,46 @@ impl Channel {
     }
 
     #[inline]
-    fn next_sample(&mut self) -> f32 {
+    fn next_sample(&mut self) -> (f32, f32) {
         if !self.active {
-            return 0.0;
+            return (0.0, 0.0);
         }
 
         let volume_gain = match self.compute_volume_gain() {
             Some(gain) => gain,
             None => {
                 self.active = false;
-                return 0.0;
+                return (0.0, 0.0);
             }
         };
 
-        let raw_sample = self.read_interpolated_sample();
+        let (raw_l, raw_r) = self.read_interpolated_sample_stereo();
 
         if !self.advance_sample_position() {
             self.active = false;
-            return 0.0;
+            return (0.0, 0.0);
         }
 
-        if self.filter.enabled {
-            self.apply_filter(raw_sample) * volume_gain
+        let (out_l, out_r) = if self.filter.enabled {
+            let (fl, fr) = self.apply_filter_stereo(raw_l, raw_r);
+            (fl * volume_gain, fr * volume_gain)
         } else {
-            raw_sample * volume_gain
+            (raw_l * volume_gain, raw_r * volume_gain)
+        };
+
+        if self.xfade_remaining > 0 {
+            let t = self.xfade_remaining as f32 / 64.0;
+            self.xfade_remaining -= 1;
+            (out_l + self.xfade_prev_l * t, out_r + self.xfade_prev_r * t)
+        } else if self.release_fade_remaining > 0 {
+            self.release_fade_remaining -= 1;
+            let fade = self.release_fade_remaining as f32 / RELEASE_FADE_SAMPLES as f32;
+            if self.release_fade_remaining == 0 {
+                self.active = false;
+            }
+            (out_l * fade, out_r * fade)
+        } else {
+            (out_l, out_r)
         }
     }
 
@@ -498,9 +554,10 @@ impl Channel {
                 self.release_elapsed,
                 SAMPLE_RATE_F64,
             );
-        } else if let Some(ref rel) = self.release_elapsed {
-            let fade_total = f64::from(RELEASE_FADE_MIN_SAMPLES);
-            self.cached_env_amp = (1.0 - *rel / fade_total).max(0.0) as f32;
+        } else if self.note_released && !self.vol_envelope.enabled
+            && self.release_fade_remaining == 0
+        {
+            self.active = false;
         }
         if let Some(ref mut rel) = self.release_elapsed {
             *rel += samples_per_tick;
@@ -700,10 +757,10 @@ impl TrackerSource {
                     pitch_envelope,
                     filter,
                 } => {
-                    self.preview_channels.clear();
-                    for &freq in &frequencies {
-                        let mut voice = Channel::new();
-                        voice.trigger(
+                    self.preview_channels.resize_with(frequencies.len(), Channel::new);
+                    self.preview_channels.truncate(frequencies.len());
+                    for (i, &freq) in frequencies.iter().enumerate() {
+                        self.preview_channels[i].trigger(
                             freq,
                             volume,
                             vol_envelope.clone(),
@@ -715,8 +772,7 @@ impl TrackerSource {
                             pitch_envelope.clone(),
                             (*filter).clone(),
                         );
-                        voice.set_panning(panning);
-                        self.preview_channels.push(voice);
+                        self.preview_channels[i].set_panning(panning);
                     }
                     self.preview_ticks_remaining = PREVIEW_RELEASE_TICKS;
                     if !self.playing {
@@ -961,7 +1017,7 @@ impl TrackerSource {
             self.preview_ticks_remaining -= 1;
             if self.preview_ticks_remaining == 0 {
                 for preview_voice in &mut self.preview_channels {
-                    preview_voice.note_off(RELEASE_FADE_MIN_SAMPLES);
+                    preview_voice.note_off(RELEASE_FADE_SAMPLES);
                 }
             }
         }
@@ -1016,10 +1072,10 @@ impl Iterator for TrackerSource {
                         voice.next_sample();
                         continue;
                     }
-                    let sample = voice.next_sample();
-                    track_sample_sum += sample;
-                    left_mix += sample * voice.pan_l;
-                    right_mix += sample * voice.pan_r;
+                    let (sl, sr) = voice.next_sample();
+                    track_sample_sum += (sl + sr) * 0.5;
+                    left_mix += sl * voice.pan_l;
+                    right_mix += sr * voice.pan_r;
                 }
 
                 if write_scope
@@ -1032,10 +1088,10 @@ impl Iterator for TrackerSource {
 
         let mut preview_sample_sum = 0.0_f32;
         for preview_voice in &mut self.preview_channels {
-            let sample = preview_voice.next_sample();
-            preview_sample_sum += sample;
-            left_mix += sample * preview_voice.pan_l;
-            right_mix += sample * preview_voice.pan_r;
+            let (sl, sr) = preview_voice.next_sample();
+            preview_sample_sum += (sl + sr) * 0.5;
+            left_mix += sl * preview_voice.pan_l;
+            right_mix += sr * preview_voice.pan_r;
         }
 
         if !self.playing
@@ -1228,7 +1284,7 @@ mod tests {
     fn channel_inactive_produces_silence() {
         let mut channel = Channel::new();
         assert!(!channel.active);
-        assert_eq!(channel.next_sample(), 0.0);
+        assert_eq!(channel.next_sample(), (0.0, 0.0));
     }
 
     #[test]

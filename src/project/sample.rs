@@ -6,8 +6,7 @@ use std::sync::Arc;
 use rodio::Source;
 use serde::{Deserialize, Serialize};
 
-const MAX_SAMPLE_LEN: usize = 131_072;
-const INV_I16_MAX: f32 = 1.0 / i16::MAX as f32;
+const MAX_SAMPLE_LEN: usize = 220_500;
 const WAVE_LEN: usize = 256;
 const WAVE_RATE: u32 = 440 * WAVE_LEN as u32;
 
@@ -22,6 +21,7 @@ pub enum LoopType {
 pub struct SampleData {
     pub samples_i16: Vec<i16>,
     pub samples_f32: Vec<f32>,
+    pub samples_f32_right: Vec<f32>,
     pub sample_rate: u32,
     pub base_note: u8,
     pub loop_type: LoopType,
@@ -42,40 +42,61 @@ impl SampleData {
         let sample_rate = decoder.sample_rate().get();
         let channels = decoder.channels().get() as usize;
 
-        let raw_samples: Vec<i16> = decoder
-            .map(|s| (s.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16)
-            .collect();
+        let raw: Vec<f32> = decoder.collect();
 
-        let mono: Vec<i16> = if channels == 1 {
-            raw_samples
+        let (left, right) = if channels == 1 {
+            (raw.clone(), raw)
         } else {
-            raw_samples
-                .chunks_exact(channels)
-                .map(|frame| {
-                    let sum: i32 = frame.iter().map(|&s| i32::from(s)).sum();
-                    (sum / channels as i32) as i16
-                })
-                .collect()
+            let mut l = Vec::with_capacity(raw.len() / channels);
+            let mut r = Vec::with_capacity(raw.len() / channels);
+            for frame in raw.chunks_exact(channels) {
+                l.push(frame[0]);
+                r.push(frame[1 % channels]);
+            }
+            (l, r)
         };
 
-        let threshold: i16 = 328;
-        let trimmed = trim_silence(&mono, threshold);
-
-        let samples_i16: Vec<i16> = if trimmed.len() > MAX_SAMPLE_LEN {
-            trimmed[..MAX_SAMPLE_LEN].to_vec()
-        } else {
-            trimmed.to_vec()
+        let threshold: f32 = 0.01;
+        let find_start = |buf: &[f32]| buf.iter().position(|&s| s.abs() >= threshold).unwrap_or(0);
+        let find_end = |buf: &[f32], fallback: usize| {
+            buf.iter().rposition(|&s| s.abs() >= threshold).map_or(fallback, |p| p + 1)
         };
+        let start = find_start(&left).min(find_start(&right));
+        let end = find_end(&left, start).max(find_end(&right, start));
 
-        let samples_f32: Vec<f32> = samples_i16
+        let cap = |buf: &[f32]| -> Vec<f32> {
+            let trimmed = &buf[start..end.min(buf.len())];
+            if trimmed.len() > MAX_SAMPLE_LEN {
+                trimmed[..MAX_SAMPLE_LEN].to_vec()
+            } else {
+                trimmed.to_vec()
+            }
+        };
+        let mut samples_f32 = cap(&left);
+        let mut samples_f32_right = cap(&right);
+
+        let fade_len = 64.min(samples_f32.len());
+        for i in 0..fade_len {
+            let gain = 1.0 - i as f32 / fade_len as f32;
+            let idx = samples_f32.len() - fade_len + i;
+            samples_f32[idx] *= gain;
+            samples_f32_right[idx] *= gain;
+        }
+
+        let samples_i16: Vec<i16> = samples_f32
             .iter()
-            .map(|&s| f32::from(s) * INV_I16_MAX)
+            .zip(samples_f32_right.iter())
+            .map(|(&l, &r)| {
+                let mono = (l + r) * 0.5;
+                (mono.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16
+            })
             .collect();
 
-        let total_len = samples_i16.len();
+        let total_len = samples_f32.len();
         Ok(Arc::new(Self {
             samples_i16,
             samples_f32,
+            samples_f32_right,
             sample_rate,
             base_note: 60,
             loop_type: LoopType::None,
@@ -93,10 +114,12 @@ impl SampleData {
             .iter()
             .map(|&s| (s * f32::from(i16::MAX)) as i16)
             .collect();
+        let samples_f32_right = samples_f32.clone();
         let len = samples_f32.len();
         Arc::new(Self {
             samples_i16,
             samples_f32,
+            samples_f32_right,
             sample_rate: WAVE_RATE,
             base_note: 69,
             loop_type: if looped {
@@ -164,18 +187,6 @@ impl SampleData {
     }
 }
 
-fn trim_silence(samples: &[i16], threshold: i16) -> &[i16] {
-    let start = samples
-        .iter()
-        .position(|&s| s.abs() >= threshold)
-        .unwrap_or(0);
-    let end = samples
-        .iter()
-        .rposition(|&s| s.abs() >= threshold)
-        .map_or(start, |p| p + 1);
-    &samples[start..end]
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,6 +196,7 @@ mod tests {
         let data = SampleData {
             samples_i16: vec![0i16; 44100],
             samples_f32: vec![0.0f32; 44100],
+            samples_f32_right: vec![0.0f32; 44100],
             sample_rate: 44100,
             base_note: 60,
             loop_type: LoopType::None,
@@ -196,6 +208,7 @@ mod tests {
         };
         assert_eq!(data.samples_i16.len(), 44100);
         assert_eq!(data.samples_f32.len(), 44100);
+        assert_eq!(data.samples_f32_right.len(), 44100);
     }
 
     #[test]

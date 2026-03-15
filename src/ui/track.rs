@@ -562,6 +562,7 @@ fn draw_interactive_waveform(ui: &mut egui::Ui, app: &mut App, inst_idx: usize) 
             let rs_clamped = rs.min(re_clamped);
             sd.samples_i16 = sd.samples_i16[rs_clamped..re_clamped].to_vec();
             sd.samples_f32 = sd.samples_f32[rs_clamped..re_clamped].to_vec();
+            sd.samples_f32_right = sd.samples_f32_right[rs_clamped..re_clamped].to_vec();
             let new_len = sd.samples_i16.len();
             if sd.loop_start >= rs_clamped {
                 sd.loop_start -= rs_clamped;
