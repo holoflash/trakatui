@@ -1,4 +1,4 @@
-<h1><img src="assets/icon.png" alt="psikat" height="64" style="image-rendering: pixelated; vertical-align: middle;"/> psikat</h1>
+# psikat
 
 A lightweight cross-platform tracker-like sequencer built with Rust and egui.
 
@@ -6,8 +6,8 @@ A lightweight cross-platform tracker-like sequencer built with Rust and egui.
 
 ## 🚧 UNDER DEVELOPMENT 🚧
 
-Each time I sit down to work on piskat, I find new things I want to fix, add or change.
-Hang tight...this is gonna take a while! It's still missing a lot of features that I would consider to be essential before an official 1.0.0 release, but I keep going on side-missions that unveil alot of new possibilities.
+Each time I sit down to work on this project, I find new things I want to fix, add or change.
+Hang tight...this is gonna take a while! It's still missing a lot of features that I would consider to be essential before an official 1.0.0 release, but I keep going on side-missions that unveil alot of new possibilities I didn't even think about.
 
 **Latest changes**
 
@@ -19,14 +19,6 @@ Hang tight...this is gonna take a while! It's still missing a lot of features th
 - Added mixer with channel strips
 - Polyphonic tracks (up to 8 voices)
 - Removed all .xm effect commands in preparation of unique approach
-
-**TODO**
-
-- Make ADSRs easier to use
-- Improve mixer channel strip design
-- Add an effect macro palette
-- Investigate MIDI compatibility
-- ...and more
 
 > _All features are subject to change without notice before version 1.0.0_
 
