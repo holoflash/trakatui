@@ -1,6 +1,4 @@
-# psikat
-
-<img src="assets/icon.png" alt="psikat" height="128" width="128" style="image-rendering: pixelated;"/>
+<h1><img src="assets/icon.png" alt="psikat" height="32" style="image-rendering: pixelated; vertical-align: middle;"/> psikat</h1>
 
 A lightweight cross-platform tracker-like sequencer built with Rust and egui.
 

@@ -749,13 +749,8 @@ impl App {
     }
 
     fn advance_cursor(&mut self) {
-        if self.cursor.row < self.project.current_pattern().rows - 1
-            && self.cursor.row + self.project.step < self.project.current_pattern().rows
-        {
-            self.cursor.row += self.project.step;
-        } else {
-            self.cursor.row = self.project.current_pattern().rows - 1;
-        }
+        let rows = self.project.current_pattern().rows;
+        self.cursor.row = (self.cursor.row + self.project.step) % rows;
     }
 }
 
