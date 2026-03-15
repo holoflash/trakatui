@@ -21,12 +21,15 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
+            let mut defaults = egui::Visuals::default();
+            defaults.widgets.noninteractive.bg_stroke =
+                Stroke::new(1.0, ui::COLOR_PATTERN_BEATMARKER);
             cc.egui_ctx.set_visuals(egui::Visuals {
                 selection: egui::style::Selection {
                     bg_fill: Color32::TRANSPARENT,
                     stroke: Stroke::NONE,
                 },
-
+                widgets: defaults.widgets,
                 ..Default::default()
             });
             Ok(Box::new(PsikatApp::new()))

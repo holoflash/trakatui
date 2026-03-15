@@ -64,7 +64,31 @@ fn section_header(ui: &mut egui::Ui, label: &str) {
     );
 }
 
-pub fn draw_track(ui: &mut egui::Ui, app: &mut App) {
+pub fn draw_track_sidebar(ctx: &egui::Context, app: &mut App) {
+    if !app.show_sidebar {
+        return;
+    }
+    egui::SidePanel::right("sidebar")
+        .resizable(false)
+        .exact_width(280.0)
+        .frame(
+            egui::Frame::new()
+                .fill(COLOR_LAYOUT_BG_DARK)
+                .inner_margin(egui::Margin::ZERO)
+                .stroke(Stroke::NONE),
+        )
+        .show(ctx, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("sidebar_scroll")
+                .auto_shrink([false; 2])
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    draw_track(ui, app);
+                });
+        });
+}
+
+fn draw_track(ui: &mut egui::Ui, app: &mut App) {
     handle_sample_drop(ui, app);
 
     egui::Frame::new()

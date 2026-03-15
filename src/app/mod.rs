@@ -355,9 +355,9 @@ impl App {
     pub fn project_name(&self) -> String {
         self.project_path
             .as_ref()
-            .and_then(|p| p.file_name())
+            .and_then(|p| p.file_stem())
             .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "untitled.psikat".into())
+            .unwrap_or_else(|| "untitled".into())
     }
 
     pub fn project_status(&self) -> &str {

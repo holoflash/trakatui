@@ -37,28 +37,15 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
         .frame(
             egui::Frame::new()
                 .fill(COLOR_LAYOUT_BG_PANEL)
-                .inner_margin(egui::Margin::symmetric(12, 8)),
+                .inner_margin(egui::Margin::symmetric(8, 8)),
         )
         .show(ctx, |ui| {
             ui.style_mut().drag_value_text_style = egui::TextStyle::Monospace;
 
             ui.horizontal(|ui| {
-                ui.add_space(4.0);
-                let logo_btn = ui
-                    .add(
-                        egui::Button::image(
-                            egui::Image::new(egui::include_image!("../../assets/psikat.png"))
-                                .fit_to_exact_size(Vec2::new(48.0, 48.0))
-                                .texture_options(egui::TextureOptions::NEAREST),
-                        )
-                        .frame(false),
-                    )
-                    .on_hover_cursor(egui::CursorIcon::PointingHand);
-                logo_btn.surrender_focus();
-                if logo_btn.clicked() {
-                    app.show_about_modal = !app.show_about_modal;
-                }
-                ui.add_space(8.0);
+                ui.spacing_mut().item_spacing.x = 4.0;
+
+                app.text_editing = false;
 
                 egui::ComboBox::from_id_salt("file_menu")
                     .selected_text(
@@ -135,9 +122,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                         }
                     });
 
-                ui.add_space(24.0);
-
-                app.text_editing = false;
+                ui.add_space(8.0);
 
                 draw_field(ui, "BPM");
                 let mut bpm = app.project.current_pattern().bpm;
@@ -273,7 +258,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                     }
                 }
 
-                draw_field(ui, "REPEAT");
+                draw_field(ui, "LOOP");
                 let mut rep = app.project.current_pattern().repeat;
                 let r = ui
                     .add(egui::DragValue::new(&mut rep).range(1..=999).speed(0.2))
@@ -285,8 +270,11 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                     app.project.current_pattern_mut().repeat = rep;
                 }
 
-                ui.add_space(24.0);
-                draw_field(ui, "KEY SHIFT");
+                ui.add_space(6.0);
+                ui.separator();
+                ui.add_space(6.0);
+
+                draw_field(ui, "PITCH");
                 let r = ui
                     .add(
                         egui::DragValue::new(&mut app.project.transpose)
@@ -308,10 +296,22 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                     app.text_editing = true;
                 }
 
+                draw_field(ui, "OCT");
+                let r = ui
+                    .add(
+                        egui::DragValue::new(&mut app.cursor.octave)
+                            .range(0..=8)
+                            .speed(0.15),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+                if r.has_focus() {
+                    app.text_editing = true;
+                }
+
                 let current_name = app.project.scale_index.scale().name;
                 egui::ComboBox::from_id_salt("scale_combo")
                     .selected_text(RichText::new(current_name).font(FontId::monospace(12.0)))
-                    .width(160.0)
+                    .width(140.0)
                     .show_ui(ui, |ui| {
                         for (i, scale) in SCALES.iter().enumerate() {
                             let color = if app.project.scale_index.0 == i {
@@ -327,30 +327,6 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                         }
                     });
 
-                ui.add_space(8.0);
-
-                let poly_label = if app.poly_input { "POLY" } else { "MONO" };
-                let poly_color = if app.poly_input {
-                    COLOR_ACCENT
-                } else {
-                    COLOR_TEXT_DIM
-                };
-                let poly_btn = ui
-                    .add(
-                        egui::Button::new(
-                            RichText::new(poly_label)
-                                .font(FontId::monospace(10.0))
-                                .color(poly_color),
-                        )
-                        .fill(COLOR_LAYOUT_BG_PANEL)
-                        .stroke(Stroke::new(1.0, poly_color)),
-                    )
-                    .on_hover_cursor(egui::CursorIcon::PointingHand);
-                poly_btn.surrender_focus();
-                if poly_btn.clicked() {
-                    app.poly_input = !app.poly_input;
-                }
-
                 draw_field(ui, "STEP");
                 let r = ui
                     .add(
@@ -363,93 +339,40 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                     app.text_editing = true;
                 }
 
+                let poly_label = if app.poly_input { "POLY" } else { "MONO" };
+                let poly_color = if app.poly_input {
+                    COLOR_ACCENT
+                } else {
+                    COLOR_TEXT_DIM
+                };
+                let poly_btn = ui
+                    .add(
+                        egui::Button::new(
+                            RichText::new(poly_label)
+                                .font(FontId::monospace(12.0))
+                                .color(poly_color),
+                        )
+                        .fill(COLOR_LAYOUT_BG_PANEL)
+                        .stroke(Stroke::new(1.0, poly_color)),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::PointingHand);
+                poly_btn.surrender_focus();
+                if poly_btn.clicked() {
+                    app.poly_input = !app.poly_input;
+                }
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let btn = ui
-                        .add(
-                            egui::Button::new(
-                                RichText::new("EDIT").font(FontId::monospace(12.0)).color(
-                                    if app.show_sidebar {
-                                        COLOR_TEXT
-                                    } else {
-                                        COLOR_TEXT_DIM
-                                    },
-                                ),
-                            )
-                            .fill(COLOR_LAYOUT_BG_PANEL)
-                            .stroke(Stroke::new(
-                                1.0,
-                                if app.show_sidebar {
-                                    COLOR_TEXT
-                                } else {
-                                    COLOR_TEXT_DIM
-                                },
-                            )),
-                        )
-                        .on_hover_cursor(egui::CursorIcon::PointingHand);
-                    btn.surrender_focus();
-                    if btn.clicked() {
-                        app.show_sidebar = !app.show_sidebar;
-                    }
+                    ui.spacing_mut().item_spacing.x = 2.0;
 
-                    let arr_btn = ui
-                        .add(
-                            egui::Button::new(
-                                RichText::new("ARR").font(FontId::monospace(12.0)).color(
-                                    if app.show_arranger {
-                                        COLOR_TEXT
-                                    } else {
-                                        COLOR_TEXT_DIM
-                                    },
-                                ),
-                            )
-                            .fill(COLOR_LAYOUT_BG_PANEL)
-                            .stroke(Stroke::new(
-                                1.0,
-                                if app.show_arranger {
-                                    COLOR_TEXT
-                                } else {
-                                    COLOR_TEXT_DIM
-                                },
-                            )),
-                        )
-                        .on_hover_cursor(egui::CursorIcon::PointingHand);
-                    arr_btn.surrender_focus();
-                    if arr_btn.clicked() {
-                        app.show_arranger = !app.show_arranger;
-                    }
+                    draw_toggle_btn(ui, "EDIT", app.show_sidebar, &mut app.show_sidebar);
+                    draw_toggle_btn(ui, "ARR", app.show_arranger, &mut app.show_arranger);
+                    draw_toggle_btn(ui, "MIXER", app.show_mixer, &mut app.show_mixer);
 
-                    let mixer_btn = ui
-                        .add(
-                            egui::Button::new(
-                                RichText::new("MIXER").font(FontId::monospace(12.0)).color(
-                                    if app.show_mixer {
-                                        COLOR_TEXT
-                                    } else {
-                                        COLOR_TEXT_DIM
-                                    },
-                                ),
-                            )
-                            .fill(COLOR_LAYOUT_BG_PANEL)
-                            .stroke(Stroke::new(
-                                1.0,
-                                if app.show_mixer {
-                                    COLOR_TEXT
-                                } else {
-                                    COLOR_TEXT_DIM
-                                },
-                            )),
-                        )
-                        .on_hover_cursor(egui::CursorIcon::PointingHand);
-                    mixer_btn.surrender_focus();
-                    if mixer_btn.clicked() {
-                        app.show_mixer = !app.show_mixer;
-                    }
+                    ui.add_space(6.0);
 
-                    ui.add_space(8.0);
                     draw_peak_meter(ui, app);
-                    ui.add_space(4.0);
+                    ui.add_space(2.0);
 
-                    draw_field(ui, "VOL");
                     let r = ui
                         .add(
                             egui::DragValue::new(&mut app.project.master_volume_db)
@@ -473,20 +396,34 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                     if r.double_clicked() {
                         app.project.master_volume_db = 0.0;
                     }
-                    ui.add(
-                        egui::Slider::new(&mut app.project.master_volume_db, -60.0..=6.0)
-                            .show_value(false)
-                            .trailing_fill(true),
-                    );
                 });
             });
         });
 }
 
+fn draw_toggle_btn(ui: &mut egui::Ui, label: &str, active: bool, state: &mut bool) {
+    let color = if active { COLOR_TEXT } else { COLOR_TEXT_DIM };
+    let btn = ui
+        .add(
+            egui::Button::new(
+                RichText::new(label)
+                    .font(FontId::monospace(12.0))
+                    .color(color),
+            )
+            .fill(COLOR_LAYOUT_BG_PANEL)
+            .stroke(Stroke::new(1.0, color)),
+        )
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+    btn.surrender_focus();
+    if btn.clicked() {
+        *state = !*state;
+    }
+}
+
 fn draw_field(ui: &mut egui::Ui, label: &str) {
     ui.label(
         RichText::new(label)
-            .font(FontId::monospace(10.0))
+            .font(FontId::monospace(12.0))
             .color(COLOR_TEXT_DIM),
     );
 }

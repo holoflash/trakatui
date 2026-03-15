@@ -4,7 +4,6 @@ mod controls_modal;
 mod header;
 mod mixer;
 mod pattern;
-mod sidebar;
 mod track;
 
 use eframe::egui::{self, Color32};
@@ -38,7 +37,7 @@ pub const COLOR_PATTERN_SELECTION_TEXT: Color32 = Color32::from_rgb(245, 235, 20
 
 pub fn draw(ctx: &egui::Context, app: &mut App) {
     header::draw_header(ctx, app);
-    sidebar::draw_sidebar(ctx, app);
+    track::draw_track_sidebar(ctx, app);
     arranger::draw_arranger(ctx, app);
     mixer::draw_mixer(ctx, app);
     pattern::draw_pattern(ctx, app);

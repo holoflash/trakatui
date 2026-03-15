@@ -155,17 +155,7 @@ impl App {
             return false;
         }
 
-        if actions.contains(&Action::FillAscending) {
-            self.save_undo_snapshot();
-            self.handle_fill(true);
-            return false;
-        }
 
-        if actions.contains(&Action::FillDescending) {
-            self.save_undo_snapshot();
-            self.handle_fill(false);
-            return false;
-        }
 
         if actions.contains(&Action::OctaveUp) {
             if self.cursor.octave < 8 {
@@ -177,6 +167,20 @@ impl App {
         if actions.contains(&Action::OctaveDown) {
             if self.cursor.octave > 0 {
                 self.cursor.octave -= 1;
+            }
+            return false;
+        }
+
+        if actions.contains(&Action::InputTransposeUp) {
+            if self.project.transpose < 12 {
+                self.project.transpose += 1;
+            }
+            return false;
+        }
+
+        if actions.contains(&Action::InputTransposeDown) {
+            if self.project.transpose > -12 {
+                self.project.transpose -= 1;
             }
             return false;
         }
@@ -651,30 +655,7 @@ impl App {
         true
     }
 
-    fn handle_fill(&mut self, ascending: bool) {
-        let ch = self.cursor.channel;
-        let v = self.cursor.voice;
-        let start_row = self.cursor.row;
-        let total_rows = self.project.current_pattern().rows;
 
-        let cell = self.project.current_pattern().get(ch, v, start_row);
-        if let Cell::NoteOn(note) = cell {
-            let mut pitch = i16::from(note.pitch);
-            for row in (start_row + 1)..total_rows {
-                if self.project.current_pattern().get(ch, v, row) != Cell::Empty {
-                    break;
-                }
-                pitch += if ascending { 1 } else { -1 };
-                let clamped = pitch.clamp(0, 127) as u8;
-                self.project.current_pattern_mut().set(
-                    ch,
-                    v,
-                    row,
-                    Cell::NoteOn(Note::new(clamped)),
-                );
-            }
-        }
-    }
 
     fn handle_note_keys(&mut self, input: &egui::InputState) {
         let note_keys = [

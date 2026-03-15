@@ -12,7 +12,7 @@ const FONT: egui::FontId = egui::FontId::monospace(12.0);
 const FONT_SMALL: egui::FontId = egui::FontId::monospace(10.0);
 const ITEM_HEIGHT: f32 = 36.0;
 const SUB_ITEM_HEIGHT: f32 = 30.0;
-const MIN_WIDTH: f32 = 180.0;
+const WIDTH: f32 = 180.0;
 const COLOR_SWATCH_SIZE: f32 = 14.0;
 const GROUP_INDENT: f32 = 14.0;
 
@@ -50,8 +50,8 @@ pub fn draw_arranger(ctx: &egui::Context, app: &mut App) {
     let mut actions: Vec<ArrangerAction> = Vec::new();
 
     egui::SidePanel::left("arranger")
-        .resizable(true)
-        .min_width(MIN_WIDTH)
+        .resizable(false)
+        .exact_width(WIDTH)
         .frame(
             egui::Frame::new()
                 .fill(COLOR_LAYOUT_BG_PANEL)

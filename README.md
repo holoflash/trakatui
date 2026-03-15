@@ -1,5 +1,7 @@
 # PSIKAT
 
+<img src="assets/psikat_full.png" alt="psikat" width="400" style="image-rendering: pixelated;"/>
+
 A lightweight cross-platform tracker-like sequencer built with Rust and egui.
 
 ![screenshot](screenshot.png)
