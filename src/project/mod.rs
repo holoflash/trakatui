@@ -153,6 +153,21 @@ impl Project {
         (self.arranger.len().saturating_sub(1), 0)
     }
 
+    pub fn item_idx_to_flat_with_sub(&self, target_idx: usize, sub_idx: usize) -> usize {
+        let base = self.item_idx_to_flat_start(target_idx);
+        if let ArrangerItem::Group { pattern_indices, .. } = &self.arranger[target_idx] {
+            let clamped = sub_idx.min(pattern_indices.len().saturating_sub(1));
+            let offset: usize = pattern_indices
+                .iter()
+                .take(clamped)
+                .map(|&pi| self.patterns[pi].repeat.max(1) as usize)
+                .sum();
+            base + offset
+        } else {
+            base
+        }
+    }
+
     pub fn item_idx_to_flat_start(&self, target_idx: usize) -> usize {
         let mut pos = 0usize;
         for (item_idx, item) in self.arranger.iter().enumerate() {
@@ -716,5 +731,23 @@ mod tests {
         p.arranger.push(ArrangerItem::Single { pattern_idx: 1 });
         assert_eq!(p.item_idx_to_flat_start(0), 0);
         assert_eq!(p.item_idx_to_flat_start(1), 3);
+    }
+
+    #[test]
+    fn item_idx_to_flat_with_sub_group() {
+        let mut p = Project::new();
+        p.patterns[0].repeat = 2;
+        p.patterns.push(Pattern::new("Pattern 02".into(), 1, 16));
+        p.patterns[1].repeat = 3;
+        p.arranger = vec![ArrangerItem::Group {
+            name: "G1".into(),
+            color: None,
+            repeat: 1,
+            pattern_indices: vec![0, 1],
+            clone_id: None,
+            collapsed: false,
+        }];
+        assert_eq!(p.item_idx_to_flat_with_sub(0, 0), 0);
+        assert_eq!(p.item_idx_to_flat_with_sub(0, 1), 2);
     }
 }

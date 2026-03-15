@@ -714,6 +714,7 @@ fn process_actions(app: &mut App, actions: Vec<ArrangerAction>) {
         match action {
             ArrangerAction::Select(idx) => {
                 app.project.current_item_idx = idx;
+                app.project.current_sub_pattern_idx = 0;
                 app.arranger_selection.clear();
                 app.arranger_selection.push(idx);
                 app.cursor.row = 0;

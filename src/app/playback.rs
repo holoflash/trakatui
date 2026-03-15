@@ -16,7 +16,12 @@ impl App {
     pub fn start_playback(&mut self, from_cursor: bool) {
         let row = if from_cursor { self.cursor.row } else { 0 };
         let flat_order = self.project.flat_order();
-        let order_idx = self.project.item_idx_to_flat_start(self.project.current_item_idx)
+        let order_idx = self
+            .project
+            .item_idx_to_flat_with_sub(
+                self.project.current_item_idx,
+                self.project.current_sub_pattern_idx,
+            )
             .min(flat_order.len().saturating_sub(1));
         self.playback.playing = true;
         self.audio.playback_ended.store(false, Ordering::Relaxed);
