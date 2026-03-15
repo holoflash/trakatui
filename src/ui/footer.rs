@@ -30,16 +30,10 @@ pub fn draw_footer(ctx: &egui::Context, app: &mut App) {
 
                 ui.spacing_mut().item_spacing.x = 4.0;
 
-                ui.label(
-                    RichText::new("INPUT")
-                        .font(FontId::monospace(12.0))
-                        .color(COLOR_TEXT_DIM),
-                );
-                ui.add_space(8.0);
                 ui.separator();
                 ui.add_space(8.0);
 
-                draw_field(ui, "Pitch");
+                draw_field(ui, "PITCH");
                 let r = ui
                     .add(
                         egui::DragValue::new(&mut app.project.transpose)
@@ -60,8 +54,8 @@ pub fn draw_footer(ctx: &egui::Context, app: &mut App) {
                 if r.has_focus() {
                     app.text_editing = true;
                 }
-
-                draw_field(ui, "Octave");
+                ui.add_space(8.0);
+                draw_field(ui, "OCTAVE");
                 let r = ui
                     .add(
                         egui::DragValue::new(&mut app.cursor.octave)
@@ -72,7 +66,7 @@ pub fn draw_footer(ctx: &egui::Context, app: &mut App) {
                 if r.has_focus() {
                     app.text_editing = true;
                 }
-
+                ui.add_space(8.0);
                 let current_name = app.project.scale_index.scale().name;
                 egui::ComboBox::from_id_salt("scale_combo")
                     .selected_text(RichText::new(current_name).font(FontId::monospace(12.0)))
@@ -91,8 +85,8 @@ pub fn draw_footer(ctx: &egui::Context, app: &mut App) {
                             );
                         }
                     });
-
-                draw_field(ui, "Skip");
+                ui.add_space(8.0);
+                draw_field(ui, "SKIP");
                 let r = ui
                     .add(
                         egui::DragValue::new(&mut app.project.step)
@@ -103,6 +97,8 @@ pub fn draw_footer(ctx: &egui::Context, app: &mut App) {
                 if r.has_focus() {
                     app.text_editing = true;
                 }
+                ui.add_space(8.0);
+                ui.separator();
             });
         });
 }

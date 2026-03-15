@@ -2,7 +2,6 @@ use std::sync::atomic::Ordering;
 
 use eframe::egui::{self, FontId, RichText, Stroke, Vec2};
 
-
 use crate::app::App;
 use crate::ui::COLOR_TEXT;
 
@@ -121,7 +120,10 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                         }
                         ui.separator();
                         if ui
-                            .selectable_label(false, RichText::new("Help").color(COLOR_TEXT_ACTIVE))
+                            .selectable_label(
+                                false,
+                                RichText::new("Controls").color(COLOR_TEXT_ACTIVE),
+                            )
                             .clicked()
                         {
                             ui.close();
@@ -129,6 +131,8 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                         }
                     });
 
+                ui.add_space(100.0);
+                ui.separator();
                 ui.add_space(8.0);
 
                 draw_field(ui, "BPM");
@@ -142,8 +146,8 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                 if r.changed() {
                     app.project.current_pattern_mut().bpm = bpm;
                 }
-
-                draw_field(ui, "SIG");
+                ui.add_space(8.0);
+                draw_field(ui, "SIGNATURE");
                 let mut num = app.project.current_pattern().time_sig_numerator;
                 let r = ui
                     .add(egui::DragValue::new(&mut num).range(1..=32).speed(0.2))
@@ -159,7 +163,6 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                         app.cursor.row = new_rows.saturating_sub(1);
                     }
                 }
-
                 ui.label(
                     RichText::new("/")
                         .font(FontId::monospace(8.0))
@@ -181,6 +184,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                         app.cursor.row = new_rows.saturating_sub(1);
                     }
                 }
+                ui.add_space(8.0);
 
                 const SUBDIVISIONS: [(u8, &str); 26] = [
                     (1, "1/1"),
@@ -211,7 +215,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                     (64, "1/64"),
                 ];
 
-                draw_field(ui, "NOTE");
+                draw_field(ui, "NOTE VALUE");
                 let ch = app.cursor.channel;
                 let current_nv = app
                     .project
@@ -256,7 +260,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                             }
                         }
                     });
-
+                ui.add_space(8.0);
                 draw_field(ui, "BARS");
                 let mut bars = app.project.current_pattern().measures;
                 let r = ui
@@ -273,7 +277,7 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                         app.cursor.row = new_rows.saturating_sub(1);
                     }
                 }
-
+                ui.add_space(8.0);
                 draw_field(ui, "REPEAT");
                 let mut rep = app.project.current_pattern().repeat;
                 let r = ui
@@ -285,18 +289,19 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                 if r.changed() {
                     app.project.current_pattern_mut().repeat = rep;
                 }
+                ui.add_space(8.0);
+                ui.separator();
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
 
-                    draw_toggle_btn(ui, "EDIT", app.show_sidebar, &mut app.show_sidebar);
-                    draw_toggle_btn(ui, "ARR", app.show_arranger, &mut app.show_arranger);
-                    draw_toggle_btn(ui, "MIXER", app.show_mixer, &mut app.show_mixer);
-
                     ui.add_space(6.0);
-
-                    draw_peak_meter(ui, app);
-                    ui.add_space(2.0);
+                    draw_toggle_btn(ui, "ARRANGER", app.show_arranger, &mut app.show_arranger);
+                    ui.add_space(6.0);
+                    draw_toggle_btn(ui, "EDIT", app.show_sidebar, &mut app.show_sidebar);
+                    ui.add_space(6.0);
+                    draw_toggle_btn(ui, "MIXER", app.show_mixer, &mut app.show_mixer);
+                    ui.add_space(6.0);
 
                     let r = ui
                         .add(
@@ -321,6 +326,8 @@ pub fn draw_header(ctx: &egui::Context, app: &mut App) {
                     if r.double_clicked() {
                         app.project.master_volume_db = 0.0;
                     }
+                    ui.add_space(6.0);
+                    draw_peak_meter(ui, app);
                 });
             });
         });
@@ -355,7 +362,7 @@ fn draw_field(ui: &mut egui::Ui, label: &str) {
 
 fn draw_peak_meter(ui: &mut egui::Ui, app: &App) {
     let meter_width = 60.0;
-    let meter_height = 10.0;
+    let meter_height = 12.0;
     let (rect, _) =
         ui.allocate_exact_size(Vec2::new(meter_width, meter_height), egui::Sense::hover());
 
