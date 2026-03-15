@@ -889,9 +889,6 @@ impl Iterator for TrackerSource {
 
         self.check_commands();
 
-        if self.stop_at_end && !self.playing {
-            return Some(0.0);
-        }
 
         let mut left_mix = 0.0_f32;
         let mut right_mix = 0.0_f32;
